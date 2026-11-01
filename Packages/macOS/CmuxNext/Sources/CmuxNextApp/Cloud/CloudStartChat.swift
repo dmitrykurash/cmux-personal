@@ -114,9 +114,11 @@ struct CloudStartChat {
         // go to the card's clone row; the stream ends when the CLI has exited.
         let (lines, sink) = AsyncStream.makeStream(of: SeedProgress.self, bufferingPolicy: .bufferingNewest(1))
         let copy: (CloudMoveCLI.Answer, (chat: String, copied: Bool))
+        // Read on the main actor before the copy runs off it.
+        let (workRoots, accountText, machineID) = (services.cloud.move.workRoots, Self.accountText(account), machine.machineID)
         do {
-            async let copied = Self.copy(cli, key: start.key, account: Self.accountText(account), machine: machine.machineID, socket: socket,
-                                         folder: folder, workRoots: services.cloud.move.workRoots, progress: sink)
+            async let copied = Self.copy(cli, key: start.key, account: accountText, machine: machineID, socket: socket,
+                                         folder: folder, workRoots: workRoots, progress: sink)
             for await line in lines {
                 var step = AgentPaneCloudStart.Step(name: "folder", folder: folderName, machine: name, size: size,
                                                     cloneState: "running", clonePhase: line.phase,
