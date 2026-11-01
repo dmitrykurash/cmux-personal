@@ -100,6 +100,7 @@ struct StartupChecks {
         precondition(!failing.connected && failing.error != nil && !failing.busy, "Offline launch must remain retryable")
         let args = try connection.arguments(command: "true")
         precondition(args.contains("UseKeychain=yes") && args.contains("StrictHostKeyChecking=yes") && args.contains("ForwardAgent=no"))
+        try await InteractionChecks.run()
         print("Startup and archive checks passed: reconnect, selection restore, history-only restore, idempotent load, project isolation, archive persistence, draft preservation, restore, save failure, legacy setup, offline retry and strict SSH with Keychain.")
     }
 }
