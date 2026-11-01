@@ -10,7 +10,7 @@ public nonisolated struct CloudNewWorkspacePlan: Sendable, Equatable {
     /// The person's folder when Current Folder applies; nil starts in the machine's own empty folder.
     public let source: String?
 
-    /// What one copy of a folder answered (`cmux link sync push`'s JSON line).
+    /// What one copy of a folder answered (`cmux link seed push`'s JSON line).
     public struct CopyAnswer: Sendable, Equatable {
         public var ok: Bool, errorCode: String?, error: String?
         public init(ok: Bool, errorCode: String? = nil, error: String? = nil) {

@@ -3,11 +3,12 @@ import { experimentArm } from "../../experiments/experiment";
 import { cloudStartLook } from "./cloudStart.experiment";
 import { CLOUD_START_STEPS, type CloudStartProgress, type CloudStartupOperation, type CloudStartupSetup } from "./cloudStartProgress";
 import { AlertCircle, Check, ChevronDown, ChevronRight, Folder, Spinner } from "./conversation/icons";
-import { useT, type Translate } from "./i18n";
+import { paneLanguage, usePaneLanguage, useT, type StringKey, type Translate } from "./i18n";
+import { fileSizeLabel } from "./FileAttachment";
 import "./cloudStart.css";
 
 type ChecklistStatus = "done" | "running" | "pending" | "skipped" | "error";
-type ChecklistStep = { id: "machine" | "clone" | "setup" | "harness"; label: string; status: ChecklistStatus; duration?: string; detail?: string; logTail?: string; action?: boolean };
+type ChecklistStep = { id: "machine" | "clone" | "setup" | "harness"; label: string; status: ChecklistStatus; duration?: string; detail?: string; logTail?: string; action?: boolean; link?: { href: string; label: string } };
 
 function elapsed(startedAt: number | undefined, finishedAt: number | undefined, now = Date.now()): string | undefined {
   if (startedAt === undefined) return undefined;
@@ -32,19 +33,45 @@ function setupStatus(setup: CloudStartupSetup | undefined): ChecklistStatus | un
   return "pending";
 }
 
-function cloneDetail(operation: CloudStartupOperation | undefined, t: Translate): string | undefined {
+/** Words for a seed's phase (cmux-tui `link/seed_cli.rs`); any other phase shows as it came. */
+const PHASE_KEYS: Record<string, StringKey> = {
+  clone: "cloudStartup.phase.clone",
+  fetch: "cloudStartup.phase.fetch",
+  bundle: "cloudStartup.phase.bundle",
+  checkout: "cloudStartup.phase.checkout",
+  submodules: "cloudStartup.phase.submodules",
+  lfs: "cloudStartup.phase.lfs",
+};
+
+function cloneDetail(operation: CloudStartupOperation | undefined, t: Translate, language: string): string | undefined {
   if (!operation) return undefined;
-  const parts = [operation.phase === "cached" ? t("cloudStartup.cached") : operation.phase];
   const progress = operation.progress;
-  if (progress?.objects !== undefined && progress.totalObjects !== undefined) parts.push(`${progress.objects}/${progress.totalObjects} objects`);
-  if (progress?.receivedBytes !== undefined) parts.push(`${Math.round(progress.receivedBytes / 1024)} KB`);
+  const size = (bytes: number | undefined) => fileSizeLabel(bytes, language);
+  const parts: (string | undefined)[] = [];
+  if (operation.phase === "cached") parts.push(t("cloudStartup.cached"));
+  else if (operation.phase === "copy" || progress?.filesTotal !== undefined) {
+    // The streamed copy: files, then bytes.
+    if (operation.fallback) parts.push(t("cloudStartup.copyInstead"));
+    if (progress?.filesTotal !== undefined) parts.push(t("cloudStartup.copyingFiles", { done: (progress.filesDone ?? 0).toLocaleString(language), total: progress.filesTotal.toLocaleString(language) }));
+    if (progress?.receivedBytes !== undefined && progress.bytesTotal !== undefined) parts.push(t("cloudStartup.ofSize", { done: size(progress.receivedBytes) ?? "", total: size(progress.bytesTotal) ?? "" }));
+  } else if (operation.phase === "upload") {
+    parts.push(t("cloudStartup.phase.upload", { size: size(progress?.bytesTotal ?? progress?.receivedBytes) ?? "" }));
+  } else {
+    const key = operation.phase ? PHASE_KEYS[operation.phase] : undefined;
+    parts.push(key ? t(key) : operation.phase);
+    const total = progress?.totalObjects;
+    if (progress?.objects !== undefined && total) parts.push(`${Math.min(100, Math.floor((progress.objects / total) * 100))}%`);
+    else if (progress?.receivedBytes) parts.push(size(progress.receivedBytes));
+  }
   return parts.filter(Boolean).join(" · ") || operation.error;
 }
 
 const DEFAULT_STARTUP_STRINGS: Record<string, string> = {
   "cloudStartup.machine": "Set up a Cloud machine", "cloudStartup.clone": "Clone repository", "cloudStartup.setup": "Run setup script", "cloudStartup.setupHint": "Add a setup script to install dependencies and configure your environment.", "cloudStartup.cached": "cached", "cloudStartup.harness": "Started {harness}",
+  "cloudStartup.copyInstead": "Copying the folder instead", "cloudStartup.copyingFiles": "{done} of {total} files", "cloudStartup.ofSize": "{done} of {total}", "cloudStartup.installApp": "Install the cmux GitHub App to clone it next time",
+  "cloudStartup.phase.upload": "Sending your changes ({size})", "cloudStartup.phase.clone": "Cloning from GitHub", "cloudStartup.phase.fetch": "Fetching from GitHub", "cloudStartup.phase.bundle": "Applying your changes", "cloudStartup.phase.checkout": "Checking out files", "cloudStartup.phase.submodules": "Getting submodules", "cloudStartup.phase.lfs": "Getting large files",
 };
-export function startupChecklist(start: CloudStartProgress, t: Translate = (key, values = {}) => (DEFAULT_STARTUP_STRINGS[key] ?? key).replace("{harness}", String(values.harness ?? "Harness")), now = Date.now()): ChecklistStep[] {
+export function startupChecklist(start: CloudStartProgress, t: Translate = (key, values = {}) => (DEFAULT_STARTUP_STRINGS[key] ?? key).replace(/\{(\w+)\}/g, (whole, name: string) => (name in values ? String(values[name]) : name === "harness" ? "Harness" : whole)), now = Date.now(), language: string = paneLanguage()): ChecklistStep[] {
   const oldStep = start.step ? CLOUD_START_STEPS.indexOf(start.step) : -1;
   const failedStep = start.state === "failed"
     ? (oldStep === 0 ? "machine" : oldStep === 1 ? "clone" : oldStep === 2 ? "harness" : start.clone?.state === "running" || start.clone?.state === "failed" ? "clone" : start.setup?.state === "running" || start.setup?.state === "failed" ? "setup" : "machine")
@@ -53,7 +80,8 @@ export function startupChecklist(start: CloudStartProgress, t: Translate = (key,
   const hasRepository = start.hasRepository ?? (Boolean(start.repository || start.folder || start.clone) && !start.home);
   const cloneStatus = operationStatus(start.clone);
   const stoppedCloneStatus = start.state === "failed" && failedStep !== "clone" && cloneStatus === "running" ? "pending" : cloneStatus;
-  const clone: ChecklistStep = { id: "clone", label: t("cloudStartup.clone"), status: !hasRepository ? "skipped" : failedStep === "clone" ? "error" : stoppedCloneStatus ?? (oldStep > 1 ? "done" : oldStep === 1 ? "running" : "pending"), duration: elapsed(start.clone?.startedAt, start.clone?.finishedAt, now), ...((cloneDetail(start.clone, t) || start.clone?.error) ? { detail: cloneDetail(start.clone, t) || start.clone?.error } : {}) };
+  const clone: ChecklistStep = { id: "clone", label: t("cloudStartup.clone"), status: !hasRepository ? "skipped" : failedStep === "clone" ? "error" : stoppedCloneStatus ?? (oldStep > 1 ? "done" : oldStep === 1 ? "running" : "pending"), duration: elapsed(start.clone?.startedAt, start.clone?.finishedAt, now), ...((cloneDetail(start.clone, t, language) || start.clone?.error) ? { detail: cloneDetail(start.clone, t, language) || start.clone?.error } : {}) };
+  if (start.clone?.installUrl) clone.link = { href: start.clone.installUrl, label: t("cloudStartup.installApp") };
   const hasScript = start.setup?.hasScript;
   const setupState = setupStatus(start.setup);
   const stoppedSetupState = start.state === "failed" && failedStep !== "setup" && setupState === "running" ? "pending" : setupState;
@@ -92,7 +120,8 @@ export function CloudStartView({ start, bubble = true, onOpenEnvironment }: { st
     return () => window.clearInterval(timer);
   }, [start.initialized, start.state]);
   useEffect(() => { setExpanded(start.initialized !== true); }, [start.initialized]);
-  const rows = startupChecklist(start, t, now);
+  const language = usePaneLanguage();
+  const rows = startupChecklist(start, t, now, language);
   const known = facts(start, t);
   const openEnvironment = () => {
     const options = { ...(start.environmentId ? { environmentId: start.environmentId } : {}), ...(start.repository ? { repository: start.repository } : {}), section: "script" as const };
@@ -104,7 +133,7 @@ export function CloudStartView({ start, bubble = true, onOpenEnvironment }: { st
     {!failed && !start.initialized && <output className="acpmux-cloud-start__status"><Spinner size={14} loading /><span>{t("cloudStart.title")}</span></output>}
     <div className="acpmux-cloud-start__card">
       <button type="button" className="acpmux-cloud-start__summary" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}><span>{start.initialized ? t("cloudStartup.initialized") : t("cloudStartup.title")}</span>{expanded ? <ChevronDown size={14} /> : start.initialized ? <span aria-hidden>›</span> : <ChevronRight size={14} />}</button>
-      {expanded && <div className="acpmux-cloud-start__checklist" aria-label="Cloud startup checklist">{rows.map((step) => <div key={step.id} className="acpmux-cloud-start__row" data-status={step.status} data-step-id={step.id}><span className="acpmux-cloud-start__mark">{mark(step, t)}</span><span className="acpmux-cloud-start__row-label">{step.label}</span>{step.duration && <time className="acpmux-cloud-start__time">{step.duration}</time>}{step.id === "setup" && step.action ? <span className="acpmux-cloud-start__detail">{onOpenEnvironment ? <button type="button" className="acpmux-cloud-start__link" onClick={openEnvironment}>{t("cloudStartup.setupHint")}</button> : t("cloudStartup.setupHint")}</span> : step.detail ? <span className={`acpmux-cloud-start__detail${step.logTail ? " acpmux-cloud-start__log-tail" : ""}`}>{step.detail}</span> : null}</div>)}</div>}
+      {expanded && <div className="acpmux-cloud-start__checklist" aria-label="Cloud startup checklist">{rows.map((step) => <div key={step.id} className="acpmux-cloud-start__row" data-status={step.status} data-step-id={step.id}><span className="acpmux-cloud-start__mark">{mark(step, t)}</span><span className="acpmux-cloud-start__row-label">{step.label}</span>{step.duration && <time className="acpmux-cloud-start__time">{step.duration}</time>}{step.id === "setup" && step.action ? <span className="acpmux-cloud-start__detail">{onOpenEnvironment ? <button type="button" className="acpmux-cloud-start__link" onClick={openEnvironment}>{t("cloudStartup.setupHint")}</button> : t("cloudStartup.setupHint")}</span> : step.detail ? <span className={`acpmux-cloud-start__detail${step.logTail ? " acpmux-cloud-start__log-tail" : ""}`}>{step.detail}</span> : null}{step.link && <a className="acpmux-cloud-start__link" href={step.link.href} target="_blank" rel="noreferrer">{step.link.label}</a>}</div>)}</div>}
     </div>
     {failed && <output className="acpmux-cloud-start__status" role="alert">{start.message ?? t("sandbox.failed")}</output>}
     {known.length > 0 && <ul className="acpmux-cloud-start__chips" data-look={arm}>{known.map((fact) => <li key={fact.id} data-fact={fact.id}>{fact.id === "folder" ? <Folder size={12} /> : <span className="acpmux-cloud-start__label">{fact.label}</span>}<span>{fact.value}</span></li>)}</ul>}

@@ -23,6 +23,13 @@ extension AgentPaneCloudStart {
         public var machineFinishedAt: Double?
         public var harnessStartedAt: Double?
         public var harnessFinishedAt: Double?
+        /// `cmux link seed push`'s progress beyond the clone's: the bytes it sends in all, the
+        /// streamed copy's files, and why a seed copied instead with the GitHub App's install link.
+        public var cloneBytesTotal: Int?
+        public var cloneFilesDone: Int?
+        public var cloneFilesTotal: Int?
+        public var cloneFallback: String?
+        public var cloneInstallURL: String?
 
         public init(name: String, folder: String? = nil, machine: String? = nil, size: String? = nil,
                     cloneState: String? = nil, clonePhase: String? = nil,
@@ -49,7 +56,9 @@ extension AgentPaneCloudStart {
                  cloneTotalObjects: step.cloneTotalObjects, setupStatus: step.setupStatus,
                  setupLogTail: step.setupLogTail, machineStartedAt: step.machineStartedAt,
                  machineFinishedAt: step.machineFinishedAt, harnessStartedAt: step.harnessStartedAt,
-                 harnessFinishedAt: step.harnessFinishedAt, to: view)
+                 harnessFinishedAt: step.harnessFinishedAt, cloneBytesTotal: step.cloneBytesTotal,
+                 cloneFilesDone: step.cloneFilesDone, cloneFilesTotal: step.cloneFilesTotal,
+                 cloneFallback: step.cloneFallback, cloneInstallURL: step.cloneInstallURL, to: view)
     }
 
     /// A machine's size in the card's words: "4 CPU · 16 GB".

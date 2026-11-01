@@ -41,6 +41,14 @@ nonisolated struct CloudMoveCLI: Sendable {
         var machineFinishedAt: Double?
         var harnessStartedAt: Double?
         var harnessFinishedAt: Double?
+        /// `link seed push` (and `start-chat copy`): `seed`, `delta` or `copy`.
+        var mode: String?
+        /// Why a seed copied instead (`not_git`, `seed.needs_github`, ...).
+        var fallbackCode: String?
+        /// `seed.needs_github`: the cmux GitHub App's install link.
+        var installURL: String?
+        /// The files left on this Mac, by path.
+        var skippedFiles: [String] = []
     }
 
     /// The `cmux` binary (the bundled cmux-tui).
@@ -50,10 +58,13 @@ nonisolated struct CloudMoveCLI: Sendable {
     /// The error code of an answer that isn't a JSON line (a crash, a kill).
     static let badAnswer = "bad_answer"
 
-    /// `cmux link sync push`: copies the working copy `local` to `remote` on
-    /// the machine whose daemon `socket` reaches.
-    func syncPush(socket: String, local: String, remote: String) async throws -> Answer {
-        try await run(["link", "sync", "push", "--socket", socket, local, remote])
+    /// `cmux link seed push`: puts the working copy `local` at `remote` on the machine whose daemon
+    /// `socket` reaches, seeded from its GitHub remote, else copied. `progress` gets each of its
+    /// progress lines (``SeedProgress``) as it goes.
+    func seedPush(socket: String, local: String, remote: String,
+                  progress: (@Sendable (SeedProgress) -> Void)? = nil) async throws -> Answer {
+        try await parsed(["link", "seed", "push", "--socket", socket, local, remote],
+                         stderrLine: progress.map(SeedProgress.reader)).answer
     }
 
     /// `cmux link sync pull`: merges the machine's `remote` (what a push left there) back into
@@ -66,7 +77,8 @@ nonisolated struct CloudMoveCLI: Sendable {
     /// caller's own sync, so a chat moved mid-turn takes the turn's last changes with it.
     struct FrozenSync: Sendable, Equatable {
         /// Pull from the machine (Bring Back Local) rather than push to it (Move to Cloud).
-        var pull: Bool
+        var way: Way
+        enum Way: String, Sendable { case push, pull, seed }
         /// The machine link socket `link sync` uses.
         var socket: String
         var local: String
@@ -89,7 +101,7 @@ nonisolated struct CloudMoveCLI: Sendable {
 
     /// `agentMove`'s flags after `--cwd`.
     static func agentMoveFlags(sync: FrozenSync?, askFirst: Bool, vmKind: String?, toPID: Int32?) -> [String] {
-        let frozen = sync.map { ["--sync", $0.pull ? "pull" : "push", "--sync-socket", $0.socket, "--sync-local", $0.local, "--sync-remote", $0.remote] } ?? []
+        let frozen = sync.map { ["--sync", $0.way.rawValue, "--sync-socket", $0.socket, "--sync-local", $0.local, "--sync-remote", $0.remote] } ?? []
         return ["--interrupt"] + frozen + (askFirst ? ["--ask-first"] : []) + (vmKind.map { ["--vm-kind", $0] } ?? [])
             + (toPID.map { ["--to-pid", String($0)] } ?? [])
     }
@@ -151,14 +163,15 @@ nonisolated struct CloudMoveCLI: Sendable {
         (try await run(["link", "start-chat", "import", "--entries", entries]), ())
     }
 
-    /// `cmux link start-chat copy`: copies `local` to a folder of the send's own on the machine whose
+    /// `cmux link start-chat copy`: puts `local` (``seedPush(socket:local:remote:progress:)``) in a folder of the send's own on the machine whose
     /// daemon `socket` reaches, under the first of `workRoots` it can write, unless this send's copy
     /// already finished there. The chat's folder there, and whether it copied now.
     func startChatCopy(key: String, account: String, machine: String, socket: String, local: String, subpath: String,
-                       workRoots: [String]) async throws -> (Answer, (chat: String, copied: Bool)) {
+                       workRoots: [String], progress: (@Sendable (SeedProgress) -> Void)? = nil) async throws -> (Answer, (chat: String, copied: Bool)) {
         let roots = workRoots.flatMap { ["--work-root", $0] }
         let run = try await parsed(["link", "start-chat", "copy", "--key", key, "--account", account, "--machine", machine,
-                                    "--socket", socket, "--local", local, "--subpath", subpath] + roots)
+                                    "--socket", socket, "--local", local, "--subpath", subpath] + roots,
+                                   stderrLine: progress.map(SeedProgress.reader))
         let chat = run.object?["chat"] as? String ?? ""
         guard !run.answer.ok || chat.hasPrefix("/") else {
             return (Answer(ok: false, errorCode: Self.badAnswer, error: "link start-chat copy answered ok without its folder"), (chat, false))
@@ -174,9 +187,10 @@ nonisolated struct CloudMoveCLI: Sendable {
     }
 
     /// One run's answer, with its JSON line (nil when it printed none) and exit status.
-    private func parsed(_ arguments: [String], timeout: Duration? = nil) async throws -> (answer: Answer, object: [String: Any]?, status: Int32) {
+    private func parsed(_ arguments: [String], timeout: Duration? = nil,
+                        stderrLine: (@Sendable (String) -> Void)? = nil) async throws -> (answer: Answer, object: [String: Any]?, status: Int32) {
         let result = try await ProcessRunner.run(executable: binary, arguments: arguments, environment: nil,
-                                                 timeout: timeout ?? self.timeout, clock: ContinuousClock())
+                                                 timeout: timeout ?? self.timeout, stderrLine: stderrLine, clock: ContinuousClock())
         let lines = String(decoding: result.stdout, as: UTF8.self).split(separator: "\n")
         guard let line = lines.last(where: { !$0.allSatisfy(\.isWhitespace) }),
               let object = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any],
@@ -184,7 +198,7 @@ nonisolated struct CloudMoveCLI: Sendable {
             let detail = String(decoding: result.stderr, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             return (Answer(ok: false, errorCode: Self.badAnswer, error: detail.isEmpty ? "exit \(result.status)" : detail), nil, result.status)
         }
-        let answer = Answer(ok: ok, errorCode: object["error_code"] as? String, error: object["error"] as? String,
+        var answer = Answer(ok: ok, errorCode: object["error_code"] as? String, error: object["error"] as? String,
                             sessionID: object["session_id"] as? String, transferID: object["transfer_id"] as? String,
                             conflicts: object["conflicts"] as? [String] ?? [], side: object["side"] as? String,
                             updated: object["updated"] as? Bool ?? false, build: object["build"] as? String,
@@ -204,6 +218,10 @@ nonisolated struct CloudMoveCLI: Sendable {
                             machineFinishedAt: object["machine_finished_at"] as? Double ?? object["machineFinishedAt"] as? Double,
                             harnessStartedAt: object["harness_started_at"] as? Double ?? object["harnessStartedAt"] as? Double,
                             harnessFinishedAt: object["harness_finished_at"] as? Double ?? object["harnessFinishedAt"] as? Double)
+        answer.mode = object["mode"] as? String
+        answer.fallbackCode = object["fallback_code"] as? String
+        answer.installURL = object["install_url"] as? String
+        answer.skippedFiles = (object["skipped_files"] as? [[String: Any]] ?? []).compactMap { $0["path"] as? String }
         return (answer, object, result.status)
     }
 }

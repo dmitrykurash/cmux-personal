@@ -63,10 +63,19 @@ export type CloudStartupOperation = {
   finishedAt?: number;
   error?: string;
   phase?: string;
+  /// A seed that copied the folder instead: the reason's code (`not_git`, `seed.needs_github`, ...).
+  fallback?: string;
+  /// The cmux GitHub App's install page, when the machine could not read a private repository.
+  installUrl?: string;
   progress?: {
     receivedBytes?: number;
     objects?: number;
     totalObjects?: number;
+    /// The upload's or the copy's whole size, beside `receivedBytes` done.
+    bytesTotal?: number;
+    /// The copy's files done and in all.
+    filesDone?: number;
+    filesTotal?: number;
   };
 };
 
@@ -193,6 +202,16 @@ function prefixedTiming(prefix: "machine" | "harness", value: { startedAt?: numb
   } as Record<string, number>;
 }
 
+/** An `https:` address, else undefined; the card links to it. */
+function httpsUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 2048) return undefined;
+  try {
+    return new URL(value).protocol === "https:" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function operation(value: unknown): CloudStartupOperation | undefined {
   const record = asRecord(value);
   if (!record) return undefined;
@@ -207,14 +226,22 @@ function operation(value: unknown): CloudStartupOperation | undefined {
   const receivedBytes = number(progressRecord?.receivedBytes ?? progressRecord?.received_bytes);
   const objects = number(progressRecord?.objects);
   const totalObjects = number(progressRecord?.totalObjects ?? progressRecord?.total_objects);
+  const bytesTotal = number(progressRecord?.bytesTotal ?? progressRecord?.bytes_total);
+  const filesDone = number(progressRecord?.filesDone ?? progressRecord?.files_done);
+  const filesTotal = number(progressRecord?.filesTotal ?? progressRecord?.files_total);
   const progress = progressRecord
     ? {
         ...(receivedBytes !== undefined && { receivedBytes }),
         ...(objects !== undefined && { objects }),
         ...(totalObjects !== undefined && { totalObjects }),
+        ...(bytesTotal !== undefined && { bytesTotal }),
+        ...(filesDone !== undefined && { filesDone }),
+        ...(filesTotal !== undefined && { filesTotal }),
       }
     : undefined;
-  return { state, ...(startedAt !== undefined && { startedAt }), ...(finishedAt !== undefined && { finishedAt }), ...(error && { error }), ...(phase && { phase }), ...(progress && Object.keys(progress).length > 0 && { progress }) };
+  const fallback = line(record.fallback, 80);
+  const installUrl = httpsUrl(record.installUrl ?? record.install_url);
+  return { state, ...(startedAt !== undefined && { startedAt }), ...(finishedAt !== undefined && { finishedAt }), ...(error && { error }), ...(phase && { phase }), ...(fallback && { fallback }), ...(installUrl && { installUrl }), ...(progress && Object.keys(progress).length > 0 && { progress }) };
 }
 
 function setupStatus(value: unknown): CloudStartupSetup | undefined {

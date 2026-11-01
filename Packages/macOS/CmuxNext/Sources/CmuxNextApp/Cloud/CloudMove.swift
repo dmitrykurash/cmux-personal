@@ -11,7 +11,7 @@ import Foundation
 /// "Move to Cloud", the tab and chat right-click menus and `cmux cloud move`.
 /// For a chat tab of this Mac it reuses a Cloud machine (the named one, else a
 /// connected one, else any, else a new one), copies the chat's folder there
-/// (`cmux link sync push`), moves the chat (`cmux link agent move`), and shows
+/// (`cmux link seed push`), moves the chat (`cmux link agent move`), and shows
 /// it on that machine: a Cloud workspace whose terminal runs in the synced
 /// folder and whose chat tab is bound to the moved session through the
 /// machine's store, so the tab attaches through that machine and carries its
@@ -161,8 +161,9 @@ struct CloudMove {
         let ownerPID = await machine.link?.ownerPID
         let moved: CloudMoveCLI.Answer
         do {
-            // A running turn goes on on the machine, with what it wrote since the sync above.
-            let sync = CloudMoveCLI.FrozenSync(pull: false, socket: machineSocket, local: folder.root, remote: remote.folder)
+            // A running turn goes on on the machine, with what it wrote since the sync above (a delta seed,
+            // or a re-push of the copy).
+            let sync = CloudMoveCLI.FrozenSync(way: .seed, socket: machineSocket, local: folder.root, remote: remote.folder)
             moved = try await cli.agentMove(from: localSocket, surface: tab.surface.rawValue, to: machineSocket, cwd: remote.chat, sync: sync,
                                             vmKind: ownerPID == nil ? "none" : "owner", toPID: ownerPID)
         } catch {
@@ -219,14 +220,15 @@ struct CloudMove {
         }
     }
 
-    /// Syncs `folder` under the first of the machine's work roots it can write.
+    /// Puts `folder` (`link seed push`: seeded from GitHub, else copied) under the first of the
+    /// machine's work roots it can write.
     private func sync(_ folder: CloudMoveFolder, to socket: String, machine: String, cli: CloudMoveCLI,
                       retry: CloudMoveRetries.Retry) async throws -> (folder: String, chat: String) {
         var last = CloudMoveCLI.Answer(ok: false)
         for root in services.cloud.move.workRoots {
             let remote = folder.remote(under: root)
             do {
-                last = try await cli.syncPush(socket: socket, local: folder.root, remote: remote.folder)
+                last = try await cli.seedPush(socket: socket, local: folder.root, remote: remote.folder)
             } catch {
                 // Timed out or didn't launch: nothing moved yet, so Retry runs the move again on this machine.
                 throw Failure(message: CloudMoveStrings.syncFailed(machine, CloudStrings.errorText(error)), retry: retry)

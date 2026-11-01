@@ -150,7 +150,7 @@ struct CloudBringBack {
         let moved: CloudMoveCLI.Answer
         do {
             // A running turn goes on here, with what it wrote on the machine since the pull above.
-            let sync = CloudMoveCLI.FrozenSync(pull: true, socket: machineSocket, local: entry.localRoot, remote: entry.remoteFolder)
+            let sync = CloudMoveCLI.FrozenSync(way: .pull, socket: machineSocket, local: entry.localRoot, remote: entry.remoteFolder)
             moved = try await cli.agentMove(from: machineSocket, surface: tab.surface.rawValue, to: localSocket, cwd: entry.localChat,
                                             sync: sync, askFirst: askFirst)
         } catch {

@@ -110,22 +110,38 @@ struct CloudStartChat {
         report(.init(name: "folder", folder: folderName, machine: name, size: size))
         // Each copy goes to a new folder of the send's own, under its account as its pin; a retry whose
         // copy finished opens its chat without copying again, which would overwrite what it changed.
+        // The seed's or copy's progress lines, as they come (at most ~4 a second, ``SeedProgress``),
+        // go to the card's clone row; the stream ends when the CLI has exited.
+        let (lines, sink) = AsyncStream.makeStream(of: SeedProgress.self, bufferingPolicy: .bufferingNewest(1))
         let copy: (CloudMoveCLI.Answer, (chat: String, copied: Bool))
         do {
-            copy = try await cli.startChatCopy(key: start.key, account: Self.accountText(account), machine: machine.machineID, socket: socket,
-                                               local: folder.root, subpath: folder.subpath, workRoots: services.cloud.move.workRoots)
+            async let copied = Self.copy(cli, key: start.key, account: Self.accountText(account), machine: machine.machineID, socket: socket,
+                                         folder: folder, workRoots: services.cloud.move.workRoots, progress: sink)
+            for await line in lines {
+                var step = AgentPaneCloudStart.Step(name: "folder", folder: folderName, machine: name, size: size,
+                                                    cloneState: "running", clonePhase: line.phase,
+                                                    cloneReceivedBytes: line.bytesDone, cloneObjects: line.objects,
+                                                    cloneTotalObjects: line.objectsTotal)
+                (step.cloneBytesTotal, step.cloneFilesDone, step.cloneFilesTotal) = (line.bytesTotal, line.filesDone, line.filesTotal)
+                (step.cloneFallback, step.cloneInstallURL) = (line.fallbackCode, line.installURL)
+                report(step)
+            }
+            copy = try await copied
         } catch {
             // Timed out or didn't launch: Retry copies again on this machine, into a new folder.
             throw CloudMove.Failure(message: CloudMoveStrings.syncFailed(name, CloudStrings.errorText(error)), retry: again)
         }
-        report(.init(name: "folder", folder: folderName, machine: name, size: size,
+        var copied = AgentPaneCloudStart.Step(name: "folder", folder: folderName, machine: name, size: size,
                      cloneState: copy.0.seedState, clonePhase: copy.0.seedPhase,
                      cloneStartedAt: copy.0.seedStartedAt, cloneFinishedAt: copy.0.seedFinishedAt,
                      cloneReceivedBytes: copy.0.seedReceivedBytes, cloneObjects: copy.0.seedObjects,
                      cloneTotalObjects: copy.0.seedTotalObjects, setupStatus: copy.0.environmentStatus,
                      setupLogTail: copy.0.environmentLogTail, machineStartedAt: copy.0.machineStartedAt,
                      machineFinishedAt: copy.0.machineFinishedAt, harnessStartedAt: copy.0.harnessStartedAt,
-                     harnessFinishedAt: copy.0.harnessFinishedAt))
+                     harnessFinishedAt: copy.0.harnessFinishedAt)
+        // A seed that copied instead says why; `seed.needs_github` with the App's install link.
+        (copied.cloneFallback, copied.cloneInstallURL) = (copy.0.fallbackCode, copy.0.installURL)
+        report(copied)
         guard copy.0.ok else { throw CloudMove.failure(syncing: copy.0, machine: name, retry: again) }
         let remoteChat = copy.1.chat
         // The copy may take long: a chat whose account changed meanwhile opens nowhere, and this
@@ -137,6 +153,15 @@ struct CloudStartChat {
         report(.init(name: "opening", folder: folderName, machine: name, size: size,
                      harnessStartedAt: copy.0.harnessStartedAt, harnessFinishedAt: copy.0.harnessFinishedAt))
         return try await open(start, tab: tab, on: machine, cwd: remoteChat, tabKey: plan.tabKey)
+    }
+
+    /// `link start-chat copy`, its progress lines into `progress`, which ends when the CLI has exited.
+    private static func copy(_ cli: CloudMoveCLI, key: String, account: String, machine: String, socket: String, folder: CloudMoveFolder,
+                             workRoots: [String], progress: AsyncStream<SeedProgress>.Continuation) async throws
+        -> (CloudMoveCLI.Answer, (chat: String, copied: Bool)) {
+        defer { progress.finish() }
+        return try await cli.startChatCopy(key: key, account: account, machine: machine, socket: socket, local: folder.root,
+                                           subpath: folder.subpath, workRoots: workRoots, progress: { progress.yield($0) })
     }
 
     /// Opens the chat on `machine` in `cwd` under the plan's `tabKey` (a retry gets the same tab) and closes

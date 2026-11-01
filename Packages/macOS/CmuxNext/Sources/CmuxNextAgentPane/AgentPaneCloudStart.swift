@@ -211,6 +211,8 @@ extension AgentPaneCloudStart {
                                     setupLogTail: String? = nil,
                                     machineStartedAt: Double? = nil, machineFinishedAt: Double? = nil,
                                     harnessStartedAt: Double? = nil, harnessFinishedAt: Double? = nil,
+                                    cloneBytesTotal: Int? = nil, cloneFilesDone: Int? = nil, cloneFilesTotal: Int? = nil,
+                                    cloneFallback: String? = nil, cloneInstallURL: String? = nil,
                                     to view: AgentPaneView) {
         var value: [String: JSONValue] = ["key": .string(key), "step": .string(step)]
         if let folder { value["folder"] = .string(folder) }
@@ -225,6 +227,11 @@ extension AgentPaneCloudStart {
         if let cloneReceivedBytes { cloneProgress["received_bytes"] = .number(Double(cloneReceivedBytes)) }
         if let cloneObjects { cloneProgress["objects"] = .number(Double(cloneObjects)) }
         if let cloneTotalObjects { cloneProgress["total_objects"] = .number(Double(cloneTotalObjects)) }
+        if let cloneBytesTotal { cloneProgress["bytes_total"] = .number(Double(cloneBytesTotal)) }
+        if let cloneFilesDone { cloneProgress["files_done"] = .number(Double(cloneFilesDone)) }
+        if let cloneFilesTotal { cloneProgress["files_total"] = .number(Double(cloneFilesTotal)) }
+        if let cloneFallback { cloneFields["fallback"] = .string(cloneFallback) }
+        if let cloneInstallURL { cloneFields["install_url"] = .string(cloneInstallURL) }
         if !cloneProgress.isEmpty { cloneFields["progress"] = .object(cloneProgress) }
         if !cloneFields.isEmpty { value["clone"] = .object(cloneFields) }
         var setupFields: [String: JSONValue] = [:]
