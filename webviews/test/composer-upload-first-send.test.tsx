@@ -66,9 +66,13 @@ function Harness({ options, handle }: { options: AttachmentIntakeOptions; handle
   return null;
 }
 
-async function until(check: () => boolean, turns = 400) {
-  for (let turn = 0; turn < turns && !check(); turn++)
-    await act(() => new Promise((resolve) => setTimeout(resolve, 5)));
+/// Yields to the next macrotask, so timers and the hook's state updates run.
+const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/// Waits until `check` holds, giving up after `within` ms.
+async function until(check: () => boolean, within = 2_000) {
+  const deadline = Date.now() + within;
+  while (!check() && Date.now() < deadline) await act(turn);
   expect(check()).toBe(true);
 }
 
@@ -112,7 +116,7 @@ test("a failed upload is tried again on its own; its chip never shows Retry when
       if (handle.current!.pending.some((chip) => chip.failed)) shownFailed = true;
       return handle.current!.attachments.length === 1;
     },
-    (UPLOAD_RETRY_DELAY_MS / 5) * 3,
+    UPLOAD_RETRY_DELAY_MS * 3,
   );
   expect(calls).toBe(2);
   expect(shownFailed).toBe(false);
@@ -124,14 +128,19 @@ test("a failed upload is tried again on its own; its chip never shows Retry when
 test("a failed upload that keeps failing shows Retry, and still holds a send until Retry or x", async () => {
   // No input arrives in this page, so after its first try again the wait ends at the input wait;
   // a chip already past its tries shows Retry at once.
-  const handle = mount(async () => ({ error: "The upload timed out: the app did not answer." }));
+  let calls = 0;
+  const handle = mount(async () => {
+    calls += 1;
+    return { error: "The upload timed out: the app did not answer." };
+  });
   await act(() => void handle.current!.attach([mp4()], true));
   await until(() => handle.current!.pending[0]?.uploading === true);
   const id = handle.current!.pending[0]!.id;
   // Spend the tries: each Retry fails again.
   for (let at = 0; at < UPLOAD_AUTO_RETRIES + 1; at++) {
+    const before = calls;
     await act(() => handle.current!.retry(id));
-    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    await until(() => calls > before);
   }
   await until(() => Boolean(handle.current!.pending[0]?.failed));
   expect(handle.current!.hold(() => {})).toBe(true);
@@ -140,22 +149,35 @@ test("a failed upload that keeps failing shows Retry, and still holds a send unt
   expect(handle.current!.loading).toBe(0);
 });
 
-test("an automatic retry stays in its original chat after a plain chat switch", async () => {
-  // The composer instance survives a chat switch. Uploading A's file with B's current upload
-  // handler would leak it to B's machine, even though A's pending chip stayed scoped to A.
+test("an upload the host refused outright shows Retry at once, with no try again", async () => {
+  let calls = 0;
+  const handle = mount(async () => {
+    calls += 1;
+    return { error: "The disk is full.", final: true };
+  });
+  await act(() => void handle.current!.attach([mp4()], true));
+  await until(() => Boolean(handle.current!.pending[0]?.failed));
+  expect(calls).toBe(1);
+  // Still the person's to Retry or remove: the send waits for it.
+  expect(handle.current!.hold(() => {})).toBe(true);
+});
+
+test("a delayed retry never uploads chat A's file to chat B after a plain switch", async () => {
+  // A composer keeps the same hook across chat switches. A's pending file keeps its scope;
+  // its delayed retry must never call the uploader now serving chat B.
   const handle: { current: Probe | null } = { current: null };
   let aCalls = 0;
   let bCalls = 0;
-  const makeOptions = (scope: string, upload: AttachmentIntakeOptions["upload"]): AttachmentIntakeOptions => ({
+  const options = (scope: string, upload: AttachmentIntakeOptions["upload"]): AttachmentIntakeOptions => ({
     allowImages: true,
     scope,
     pasteTarget: () => undefined,
     upload,
   });
-  const a = makeOptions("chat-a", async () =>
+  const a = options("chat-a", async () =>
     ++aCalls === 1 ? { error: "Temporary peer disconnect" } : { paths: ["/chat-a/clip.mp4"] },
   );
-  const b = makeOptions("chat-b", async () => {
+  const b = options("chat-b", async () => {
     bCalls += 1;
     return { paths: ["/chat-b/clip.mp4"] };
   });
@@ -164,19 +186,15 @@ test("an automatic retry stays in its original chat after a plain chat switch", 
   await act(() => void handle.current!.attach([mp4()], true));
   await until(() => aCalls === 1 && handle.current!.pending.length === 1);
   const chip = handle.current!.pending[0]!.id;
-  // An ordinary chat selection, with no explicit draft/attachment carry.
   act(() => root!.render(<Harness options={b} handle={handle} />));
   expect(handle.current!.pending).toEqual([]);
   await act(() => tick(UPLOAD_RETRY_DELAY_MS + 100));
   expect(bCalls).toBe(0);
   expect(handle.current!.attachments).toEqual([]);
-
-  // Back in chat A, the pending upload is marked failed and can be manually retried using A's
-  // upload handler. Nothing from it was put on B's machine or into B's prompt.
   act(() => root!.render(<Harness options={a} handle={handle} />));
   await until(() => handle.current!.pending[0]?.uploadFailed === true);
   await act(() => handle.current!.retry(chip));
-  await until(() => handle.current!.attachments.some((attached) => attached.name === "Sunbringer Menu Animation.mp4"));
+  await until(() => handle.current!.attachments.some((file) => file.name === "Sunbringer Menu Animation.mp4"));
   expect(aCalls).toBe(2);
   expect(bCalls).toBe(0);
 });
@@ -204,13 +222,12 @@ function fakeDocument() {
       removeEventListener: (type: string, run: (event: Event) => void) => listeners.get(type)?.delete(run),
     } as unknown as Document,
     fire: (type: string, init: Record<string, unknown> = {}) => {
-      for (const run of [...(listeners.get(type) ?? [])]) run({ type, isTrusted: true, ...init } as unknown as Event);
+      for (const run of listeners.get(type) ?? []) run({ type, isTrusted: true, ...init } as unknown as Event);
     },
     count: () => [...listeners.values()].reduce((sum, set) => sum + set.size, 0),
   };
 }
 
-const tick = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test("the first try again goes on its own; the last waits for the person's key or click, never Return", async () => {
   const { doc, fire, count } = fakeDocument();
@@ -222,7 +239,8 @@ test("the first try again goes on its own; the last waits for the person's key o
     () => (gaveUp += 1),
     doc,
   );
-  await tick(UPLOAD_RETRY_DELAY_MS + 50);
+  // fixed-wait: the 1 s before the first try again is the behavior under test.
+  await new Promise((resolve) => setTimeout(resolve, UPLOAD_RETRY_DELAY_MS + 50));
   expect(again).toBe(1);
   retryUploadLater(
     UPLOAD_AUTO_RETRIES - 1,
@@ -232,10 +250,10 @@ test("the first try again goes on its own; the last waits for the person's key o
   );
   // Return is the send's own gesture: it never starts an upload.
   fire("keydown", { key: "Enter" });
-  await tick(5);
+  await turn();
   expect(again).toBe(1);
   fire("keydown", { key: "h" });
-  await tick(5);
+  await turn();
   expect(again).toBe(2);
   expect(count()).toBe(0);
   expect(gaveUp).toBe(0);
@@ -256,7 +274,7 @@ test("the first try again goes on its own; the last waits for the person's key o
   );
   stop();
   fire("pointerdown");
-  await tick(5);
+  await turn();
   expect(again).toBe(2);
   expect(count()).toBe(0);
 });
