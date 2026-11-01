@@ -5899,9 +5899,10 @@ function AcpmuxPane() {
       setArtifact((current) => ({
         ...next,
         sessionId: artifactSession,
+        sourceTitle: snapshot.summary?.title || snapshot.summary?.name,
         opened: (current?.opened ?? 0) + 1,
       })),
-    [artifactSession],
+    [artifactSession, snapshot.summary?.title, snapshot.summary?.name],
   );
   // Repository context follows the selected session, connection origin and cwd. A reconnect
   // handshake for an existing session deliberately omits cwd, so key this lookup from the live
@@ -13514,8 +13515,13 @@ function AcpmuxPane() {
             artifact={artifact}
             versions={artifactVersionList}
             pinned={!!artifact.pinned}
-            onPinChange={artifact.sessionId ? (pinned) =>
-              setArtifact((current) => changeArtifactPin(current, pinned, snapshot.sessionId, artifactVersionList)) : undefined}
+            sourceTitle={artifact.sourceTitle}
+            onPinChange={
+              artifact.sessionId
+                ? (pinned) =>
+                    setArtifact((current) => changeArtifactPin(current, pinned, snapshot.sessionId, artifactVersionList))
+                : undefined
+            }
             onClose={() => setArtifact(undefined)}
             onSave={saveDocumentNatively}
           />
