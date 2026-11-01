@@ -26,6 +26,20 @@ early-use build, not a replacement for the full Ghostty-based cmux application.
   real terminal. No tool is approved by the bridge. Existing Claude user/project
   permissions still apply. Stop sends Escape; it never kills the remote server.
 
+## Native interface
+
+Version 0.2 uses a warm dark/light palette, a bordered composer card, a compact
+project/history sidebar with search, and a centered welcome screen. The layout
+was informed by the Claude Desktop screenshot in [this Composio walkthrough](https://composio.dev/content/how-to-use-asana-with-claude-and-cursor-for-effective-project-management);
+no third-party UI code or artwork is bundled.
+
+The native editor grows with text up to a bounded height, supports undo and
+selection, sends on Return, and inserts a newline on Shift-Return. Return during
+IME composition stays with the input method. Attachments can be removed before
+sending. Subtle hover, focus, button and sidebar animations respect the macOS
+Reduce Motion preference. The engine label says Claude Code rather than offering
+a model picker that the bridge cannot control.
+
 ## First use
 
 1. Ensure `ssh developer@YOUR_HOST` works with a trusted known_hosts entry. Verify
@@ -42,7 +56,7 @@ early-use build, not a replacement for the full Ghostty-based cmux application.
 4. Add a project with an existing absolute VPS path, for example
    `/home/developer/projects/my-project`, then New chat. Open terminal whenever
    Claude needs startup confirmation, permissions or an answer to a question.
-5. Select files with the paperclip, then Send. The app never automatically
+5. Select files with **+**, or drop them onto the composer, then Send. The app never automatically
    resends a message after an uncertain SSH failure; inspect the terminal first.
 
 Local settings are stored in `~/Library/Application Support/cmux-personal/config.json`
