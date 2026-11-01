@@ -16,6 +16,8 @@ final class PersonalChatModel {
     var busy = false
     var error: String?
     var showingSettings = false
+    var projectsFolder = "/home/developer/projects"
+    var hasGitHubCLI = false
     private let service: any PersonalChatServing
     private let repository: PersonalChatRepository
     private var refreshTask: Task<Void, Never>?
@@ -58,6 +60,8 @@ final class PersonalChatModel {
             guard result.user == "developer", result.claude == true, result.tmux == true else { throw PersonalChatError.missingDependencies }
             _ = try await service.request(.init(op: "install"), connection: connection)
             try await save()
+            projectsFolder = result.path ?? projectsFolder
+            hasGitHubCLI = result.githubCLI == true
             connected = true
             error = nil
             showingSettings = false
@@ -66,12 +70,22 @@ final class PersonalChatModel {
         } catch { self.error = error.localizedDescription }
     }
 
-    func addProject(name: String, path: String) async {
-        guard path.hasPrefix("/"), !name.isEmpty, !busy else { return }
+    func makeProjectImporter() -> PersonalChatProjectImporter {
+        PersonalChatProjectImporter(service: service, connection: connection, basePath: projectsFolder, hasGitHubCLI: hasGitHubCLI)
+    }
+
+    func addProject(name: String, path: String) async throws {
+        guard connected, !busy else { throw PersonalChatError.sshFailed }
+        if let existing = projects.first(where: { $0.path == path }) {
+            await selectProject(existing.id)
+            return
+        }
         let project = PersonalChatProject(name: name, path: path)
-        projects.append(project)
+        let updated = projects + [project]
+        // Persist before exposing a new sidebar row; a failed save is retryable.
+        try await repository.save(.init(connection: connection, projects: updated))
+        projects = updated
         await selectProject(project.id)
-        do { try await save() } catch { self.error = error.localizedDescription }
     }
 
     func selectProject(_ id: UUID) async {

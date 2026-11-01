@@ -9,22 +9,27 @@ struct PersonalChatView: View {
     @State private var sidebarVisible = true
     @State private var search = ""
     @State private var addingProject = false
-    @State private var projectName = ""
-    @State private var projectPath = "/home/developer/projects"
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
-    private var newChatLabel: String { String(localized: "personal.new", defaultValue: "New chat") }
+    private var newChatLabel: String { String(localized: "personal.new", defaultValue: "New chat", bundle: PersonalChatStrings.bundle) }
+    private var motion: Animation? { reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.3) }
 
     var body: some View {
-        HStack(spacing: 0) {
-            if sidebarVisible {
-                sidebar.frame(width: 236)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-                palette.divider.frame(width: 1)
-            }
+        HStack(spacing: sidebarVisible ? 10 : 0) {
+            sidebar.frame(width: 250).frame(width: sidebarVisible ? 250 : 0, alignment: .leading)
+                .opacity(sidebarVisible ? 1 : 0).clipped().accessibilityHidden(!sidebarVisible)
             conversation.frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, sidebarVisible ? 0 : 28)
         }
-        .frame(minWidth: 740, minHeight: 560)
-        .background(palette.canvas).foregroundStyle(palette.text).tint(palette.accent)
+        .padding(10).frame(minWidth: 750, minHeight: 560)
+        .background {
+            ZStack {
+                LinearGradient(colors: [palette.canvasTop, palette.canvasBottom], startPoint: .topLeading, endPoint: .bottomTrailing)
+                RadialGradient(colors: [.white.opacity(scheme == .dark ? 0.07 : 0.7), .clear], center: UnitPoint(x: 0.12, y: -0.08), startRadius: 0, endRadius: 650)
+                RadialGradient(colors: [.white.opacity(scheme == .dark ? 0.035 : 0.35), .clear], center: UnitPoint(x: 0.88, y: 0.04), startRadius: 0, endRadius: 500)
+            }
+        }
+        .foregroundStyle(palette.text).tint(palette.accent).font(PersonalChatTypography.body(13))
+        .ignoresSafeArea()
         .task { await model.load() }
         .onDisappear { model.stopRefresh() }
         .sheet(isPresented: $model.showingSettings) {
@@ -33,144 +38,190 @@ struct PersonalChatView: View {
                 Task { await model.connect() }
             }
         }
-        .sheet(isPresented: $addingProject) { projectSheet }
-        .alert(String(localized: "personal.attention", defaultValue: "Needs attention"), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
-            Button(String(localized: "personal.ok", defaultValue: "OK")) { model.error = nil }
+        .sheet(isPresented: $addingProject) {
+            PersonalChatProjectSetupView(importer: model.makeProjectImporter(), addProject: model.addProject, openTerminal: openTerminal)
+        }
+        .alert(String(localized: "personal.attention", defaultValue: "Needs attention", bundle: PersonalChatStrings.bundle), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
+            Button(String(localized: "personal.ok", defaultValue: "OK", bundle: PersonalChatStrings.bundle)) { model.error = nil }
         } message: { Text(model.error ?? "") }
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(verbatim: "cmux").font(.system(size: 24, weight: .semibold, design: .serif))
-                Text(verbatim: "PERSONAL").font(.system(size: 8, weight: .medium)).tracking(1.5).foregroundStyle(palette.muted)
-                Spacer()
-            }.padding(.horizontal, 12).padding(.top, 22).padding(.bottom, 24)
+            HStack { Spacer(); sidebarToggle }.frame(height: 30).padding(.bottom, 12)
             Button { Task { await model.startSession() } } label: {
-                Label(newChatLabel, systemImage: "square.and.pencil")
-                    .font(.system(size: 13, weight: .medium)).frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12).padding(.vertical, 11)
-            }.buttonStyle(PersonalChatHoverStyle()).disabled(!model.connected || model.project == nil || model.busy)
-                .foregroundStyle(palette.accent)
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(palette.muted)
-                TextField(String(localized: "personal.search", defaultValue: "Search chats"), text: $search)
-                    .textFieldStyle(.plain).font(.system(size: 12))
-            }.padding(.horizontal, 12).padding(.vertical, 10).padding(.bottom, 14)
+                Label(newChatLabel, systemImage: "plus.circle")
+                    .font(PersonalChatTypography.body(13, weight: .medium))
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).frame(height: 34)
+            }.buttonStyle(PersonalChatHoverStyle(radius: 9))
+                .disabled(!model.connected || model.project == nil || model.busy)
+            HStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(palette.muted)
+                    TextField(String(localized: "personal.search", defaultValue: "Search chats", bundle: PersonalChatStrings.bundle), text: $search)
+                        .textFieldStyle(.plain).font(PersonalChatTypography.body(12))
+                }.padding(.horizontal, 10).frame(height: 30)
+                    .background(palette.hover, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(palette.border))
+                Button { addingProject = true } label: {
+                    Image(systemName: "folder.badge.plus").font(.system(size: 14)).frame(width: 30, height: 30)
+                }.buttonStyle(PersonalChatHoverStyle()).foregroundStyle(palette.secondary)
+                    .help(String(localized: "personal.project.add", defaultValue: "Add project", bundle: PersonalChatStrings.bundle))
+                    .accessibilityLabel(String(localized: "personal.project.add", defaultValue: "Add project", bundle: PersonalChatStrings.bundle))
+                    .disabled(!model.connected || model.busy)
+            }.padding(.top, 12).padding(.bottom, 22)
+            sectionLabel(String(localized: "personal.projects", defaultValue: "Projects", bundle: PersonalChatStrings.bundle)).padding(.bottom, 10)
             ScrollView {
                 VStack(alignment: .leading, spacing: 3) {
-                    HStack {
-                        sectionLabel(String(localized: "personal.projects", defaultValue: "Projects"))
-                        Spacer()
-                        Button { addingProject = true } label: { Image(systemName: "plus").frame(width: 24, height: 24) }
-                            .buttonStyle(PersonalChatHoverStyle()).foregroundStyle(palette.secondary)
-                            .help(String(localized: "personal.project.add", defaultValue: "Add project"))
-                            .accessibilityLabel(String(localized: "personal.project.add", defaultValue: "Add project"))
-                    }.padding(.trailing, 6).padding(.bottom, 4)
                     ForEach(model.projects) { project in
-                        Button { Task { await model.selectProject(project.id) } } label: {
-                            Label(project.name, systemImage: "folder")
-                                .font(.system(size: 13)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 12).padding(.vertical, 10)
-                        }.buttonStyle(PersonalChatHoverStyle(selected: model.projectID == project.id)).disabled(model.busy)
-                    }
-                    sectionLabel(String(localized: "personal.recents", defaultValue: "Recent chats"))
-                        .padding(.top, 24).padding(.bottom, 7)
-                    ForEach(model.sessions.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { session in
-                        Button { model.selectSession(session.id) } label: {
-                            Text(session.title == "New chat" ? newChatLabel : session.title)
-                                .font(.system(size: 12.5)).lineLimit(1).truncationMode(.tail)
-                                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 10)
-                        }.buttonStyle(PersonalChatHoverStyle(selected: model.selectedID == session.id))
-                            .disabled(model.busy).help(session.title)
+                        projectRow(project)
+                        if model.projectID == project.id {
+                            ForEach(model.sessions.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { session in
+                                Button { model.selectSession(session.id) } label: {
+                                    Text(session.title == "New chat" ? newChatLabel : session.title)
+                                        .font(PersonalChatTypography.body(12.5)).lineLimit(1).truncationMode(.tail)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12).frame(height: 32)
+                                }.buttonStyle(PersonalChatHoverStyle(selected: model.selectedID == session.id, radius: 9))
+                                    .padding(.leading, 20).disabled(model.busy).help(session.title)
+                            }
+                        }
                     }
                 }
             }.scrollIndicators(.hidden)
             connectionFooter
-        }.padding(.horizontal, 12).background(palette.sidebar)
+        }.padding(.horizontal, 4)
+    }
+
+    private func projectRow(_ project: PersonalChatProject) -> some View {
+        Button { Task { await model.selectProject(project.id) } } label: {
+            HStack(spacing: 8) {
+                Image(systemName: model.projectID == project.id ? "chevron.down" : "chevron.right").font(.system(size: 8, weight: .semibold))
+                Image(systemName: "folder").font(.system(size: 13))
+                Text(project.name).font(PersonalChatTypography.body(12.5, weight: .medium)).lineLimit(1)
+                Spacer(minLength: 0)
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).frame(height: 32)
+        }.buttonStyle(PersonalChatHoverStyle(radius: 9)).disabled(model.busy).help(project.path)
+            .foregroundStyle(model.projectID == project.id ? palette.text : palette.secondary)
     }
 
     private func sectionLabel(_ title: String) -> some View {
-        Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(palette.muted).padding(.leading, 12)
+        Text(title.uppercased()).font(PersonalChatTypography.body(10.5, weight: .medium)).tracking(1.35)
+            .foregroundStyle(palette.muted).padding(.leading, 10)
     }
 
     private var connectionFooter: some View {
-        HStack(spacing: 8) {
-            Circle().fill(model.connected ? Color(red: 0.48, green: 0.66, blue: 0.51) : palette.muted).frame(width: 6, height: 6)
-            if model.connected {
-                Text(String(localized: "personal.connected", defaultValue: "Connected"))
-            } else {
-                Button(String(localized: "personal.connect", defaultValue: "Connect")) { Task { await model.connect() } }
-                    .buttonStyle(.plain).disabled(model.busy || model.connection.host.isEmpty)
+        HStack(spacing: 10) {
+            ZStack(alignment: .bottomTrailing) {
+                Circle().fill(palette.text).frame(width: 30, height: 30)
+                    .overlay(Image(systemName: "person.fill").font(.system(size: 14)).foregroundStyle(palette.canvas))
+                Circle().fill(model.connected ? palette.success : palette.faint).frame(width: 7, height: 7)
+                    .overlay(Circle().strokeBorder(palette.canvas, lineWidth: 1.5))
             }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: "cmux Personal").font(PersonalChatTypography.body(12, weight: .medium))
+                if model.connected {
+                    Text(String(localized: "personal.connected", defaultValue: "Connected", bundle: PersonalChatStrings.bundle))
+                } else {
+                    Button(String(localized: "personal.connect", defaultValue: "Connect", bundle: PersonalChatStrings.bundle)) { Task { await model.connect() } }
+                        .buttonStyle(.plain).disabled(model.busy || model.connection.host.isEmpty)
+                }
+            }.font(PersonalChatTypography.body(10.5)).foregroundStyle(palette.secondary)
             Spacer()
             if model.busy { ProgressView().controlSize(.mini) }
-            Button { model.showingSettings = true } label: { Image(systemName: "gearshape").frame(width: 28, height: 28) }
-                .buttonStyle(PersonalChatHoverStyle())
-                .help(String(localized: "personal.connection", defaultValue: "Connection"))
-                .accessibilityLabel(String(localized: "personal.connection", defaultValue: "Connection"))
-        }.font(.system(size: 11)).foregroundStyle(palette.secondary)
-            .padding(.leading, 12).padding(.trailing, 4).padding(.vertical, 14)
+            Button { model.showingSettings = true } label: { Image(systemName: "chevron.up.chevron.down").font(.system(size: 10)).frame(width: 26, height: 30) }
+                .buttonStyle(PersonalChatHoverStyle()).foregroundStyle(palette.muted)
+                .help(String(localized: "personal.connection", defaultValue: "Connection", bundle: PersonalChatStrings.bundle))
+                .accessibilityLabel(String(localized: "personal.connection", defaultValue: "Connection", bundle: PersonalChatStrings.bundle))
+        }.padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 8)
     }
 
     private var conversation: some View {
         VStack(spacing: 0) {
             header
-            if model.messages.isEmpty {
-                GeometryReader { geometry in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 30) {
-                            HStack(spacing: 13) {
-                                Image(systemName: "asterisk").font(.system(size: 34, weight: .light)).foregroundStyle(palette.accent)
-                                Text(String(localized: "personal.welcome.short", defaultValue: "What can we work on?"))
-                                    .font(.system(size: 32, weight: .regular, design: .serif)).tracking(-0.7)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }.padding(.horizontal, 4)
-                            composer
-                        }.frame(maxWidth: 680).padding(.horizontal, 36)
-                            .padding(.top, max(38, geometry.size.height * 0.23)).padding(.bottom, 30)
-                            .frame(maxWidth: .infinity)
-                    }.scrollIndicators(.hidden)
+            VStack(spacing: 0) {
+                if model.messages.isEmpty {
+                    Spacer(minLength: 20)
+                    PersonalChatWelcomeHeading().padding(.horizontal, 24).padding(.bottom, 36)
+                    if !model.connected || model.project == nil { setupCard.padding(.bottom, 12) }
+                } else {
+                    messageList
                 }
-            } else {
-                messageList
-                composer.frame(maxWidth: 720).padding(.horizontal, 32).padding(.top, 12).padding(.bottom, 18)
+                PersonalChatComposer(model: model, openTerminal: showTerminal)
+                    .frame(maxWidth: 760).padding(.horizontal, 24)
+                    .padding(.top, model.messages.isEmpty ? 0 : 12).padding(.bottom, model.messages.isEmpty ? 0 : 14)
                     .frame(maxWidth: .infinity)
+                if model.messages.isEmpty { Spacer(minLength: 20) }
             }
-        }.background(palette.canvas)
+            .animation(reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.38), value: model.messages.isEmpty)
+        }
+        .background {
+            ZStack {
+                palette.stage
+                if model.messages.isEmpty { PersonalChatBackdrop().transition(.opacity) }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(palette.border))
+        .shadow(color: .black.opacity(scheme == .dark ? 0.14 : 0.035), radius: 18, y: 5)
+    }
+
+    private var setupCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: model.connected ? "folder.badge.plus" : "network")
+                .font(.system(size: 17)).frame(width: 36, height: 36)
+                .background(palette.chip, in: RoundedRectangle(cornerRadius: 10))
+            Text(model.connected ? String(localized: "personal.project.add", defaultValue: "Add project", bundle: PersonalChatStrings.bundle) : String(localized: "personal.connection", defaultValue: "Connection", bundle: PersonalChatStrings.bundle))
+                .font(PersonalChatTypography.body(13, weight: .medium))
+            Spacer()
+            Button(model.connected ? String(localized: "personal.project.add", defaultValue: "Add project", bundle: PersonalChatStrings.bundle) : String(localized: "personal.connect", defaultValue: "Connect", bundle: PersonalChatStrings.bundle)) {
+                if model.connected { addingProject = true }
+                else if model.connection.host.isEmpty { model.showingSettings = true }
+                else { Task { await model.connect() } }
+            }.buttonStyle(.plain).font(PersonalChatTypography.body(11.5, weight: .medium))
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(palette.text, in: Capsule()).foregroundStyle(palette.canvas).disabled(model.busy)
+        }.padding(12).background(palette.composer, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(palette.border))
+            .frame(maxWidth: 760).padding(.horizontal, 24).frame(maxWidth: .infinity)
+    }
+
+    private var sidebarToggle: some View {
+        Button { withAnimation(motion) { sidebarVisible.toggle() } } label: {
+            Image(systemName: "sidebar.left").font(.system(size: 13)).frame(width: 28, height: 28)
+        }.buttonStyle(PersonalChatHoverStyle()).foregroundStyle(palette.muted)
+            .help(String(localized: "personal.sidebar", defaultValue: "Toggle sidebar", bundle: PersonalChatStrings.bundle))
+            .accessibilityLabel(String(localized: "personal.sidebar", defaultValue: "Toggle sidebar", bundle: PersonalChatStrings.bundle))
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            Button {
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) { sidebarVisible.toggle() }
-            } label: { Image(systemName: "sidebar.left").frame(width: 28, height: 28) }
-                .buttonStyle(PersonalChatHoverStyle()).foregroundStyle(palette.secondary)
-                .help(String(localized: "personal.sidebar", defaultValue: "Toggle sidebar"))
-                .accessibilityLabel(String(localized: "personal.sidebar", defaultValue: "Toggle sidebar"))
-            Text(model.project?.name ?? "cmux Personal").font(.system(size: 13, weight: .medium)).lineLimit(1)
+        HStack(spacing: 10) {
+            if !sidebarVisible { sidebarToggle }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.project?.name ?? "cmux Personal").font(PersonalChatTypography.body(12.5, weight: .medium)).lineLimit(1)
+                if let path = model.project?.path {
+                    Text(path).font(PersonalChatTypography.body(10)).foregroundStyle(palette.muted).lineLimit(1).truncationMode(.middle)
+                        .textSelection(.enabled).help(path)
+                }
+            }
             Spacer()
             if model.selectedID != nil {
                 Button(action: showTerminal) {
-                    Label(String(localized: "personal.terminal", defaultValue: "Open terminal"), systemImage: "terminal")
-                        .font(.system(size: 11)).padding(.horizontal, 10).padding(.vertical, 7)
-                }.buttonStyle(PersonalChatHoverStyle()).foregroundStyle(palette.secondary)
+                    Label(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle), systemImage: "terminal")
+                        .font(PersonalChatTypography.body(11)).padding(.horizontal, 10).padding(.vertical, 6)
+                }.buttonStyle(PersonalChatHoverStyle(radius: 7)).foregroundStyle(palette.secondary)
                     .disabled(model.phase == "offline" || !model.connected)
             }
-        }.padding(.horizontal, 20).frame(height: 58)
-    }
-
-    private var composer: some View {
-        PersonalChatComposer(model: model, openTerminal: showTerminal)
+        }.padding(.horizontal, 16).frame(height: 44)
     }
 
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 28) {
+                LazyVStack(alignment: .leading, spacing: 24) {
                     ForEach(model.messages) { message in PersonalChatMessageView(message: message) }
                     Color.clear.frame(height: 1).id("end")
-                }.frame(maxWidth: 720).padding(.horizontal, 36).padding(.top, 24).padding(.bottom, 8)
+                }.frame(maxWidth: 760).padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 8)
                     .frame(maxWidth: .infinity)
             }
             .onAppear { proxy.scrollTo("end", anchor: .bottom) }
@@ -178,22 +229,6 @@ struct PersonalChatView: View {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("end", anchor: .bottom) }
             }
         }
-    }
-
-    private var projectSheet: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text(String(localized: "personal.project.add", defaultValue: "Add project")).font(.title2)
-            TextField(String(localized: "personal.project.name", defaultValue: "Name"), text: $projectName)
-            TextField(String(localized: "personal.project.path", defaultValue: "Folder on the VPS"), text: $projectPath)
-            HStack {
-                Button(String(localized: "personal.cancel", defaultValue: "Cancel")) { addingProject = false }
-                Spacer()
-                Button(String(localized: "personal.project.add", defaultValue: "Add project")) {
-                    addingProject = false
-                    Task { await model.addProject(name: projectName, path: projectPath) }
-                }.disabled(projectName.isEmpty || !projectPath.hasPrefix("/"))
-            }
-        }.padding(28).frame(width: 440)
     }
 
     private func showTerminal() {

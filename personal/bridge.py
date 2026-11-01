@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import signal
 import shutil
 import subprocess
 import sys
@@ -251,11 +252,262 @@ def send(sid, text):
     return {"sent": True}
 
 
+class ProjectError(ValueError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+class ImportCancelled(Exception):
+    pass
+
+
+def repository_url(value):
+    if not isinstance(value, str) or len(value) > 2048 or any(c.isspace() or ord(c) < 32 for c in value):
+        raise ProjectError('repository_url')
+    host = r'[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?'
+    # No credentials, local paths, Git helper transports, query or fragment.
+    if re.fullmatch(r'git@' + host + r':[A-Za-z0-9_./~%-]+', value):
+        return value
+    from urllib.parse import urlsplit
+    try:
+        parsed = urlsplit(value)
+        valid = (parsed.scheme in ('https', 'ssh') and parsed.hostname and
+                 re.fullmatch(host, parsed.hostname) and parsed.path not in ('', '/') and
+                 not parsed.query and not parsed.fragment and parsed.password is None and
+                 (parsed.username is None if parsed.scheme == 'https' else parsed.username == 'git') and
+                 (parsed.port is None or 1 <= parsed.port <= 65535))
+    except ValueError:
+        valid = False
+    if not valid:
+        raise ProjectError('repository_url')
+    return value
+
+
+def selected_folder(value):
+    try:
+        return project_path(value)
+    except (ValueError, OSError):
+        raise ProjectError('project_path') from None
+
+
+def new_project_folder(value):
+    if not isinstance(value, str) or not value.startswith('/') or any(ord(c) < 32 for c in value):
+        raise ProjectError('project_path')
+    path = Path(value)
+    if path.name in ('', '.', '..') or '..' in path.parts:
+        raise ProjectError('project_path')
+    parent = selected_folder(str(path.parent))
+    path = parent / path.name
+    try:
+        path.mkdir(mode=0o700)  # Exclusive reservation, including dangling symlinks.
+    except FileExistsError:
+        raise ProjectError('destination_exists') from None
+    except OSError:
+        raise ProjectError('project_path') from None
+    return path
+
+
+def folders(value=None):
+    path = selected_folder(value or str(Path.home()))
+    try:
+        with os.scandir(path) as entries:
+            names = sorted(entry.name for entry in entries if not entry.name.startswith('.')
+                           and entry.is_dir(follow_symlinks=False))[:200]
+    except OSError:
+        raise ProjectError('project_path') from None
+    return {'path': str(path), 'parent': str(path.parent), 'directories': names}
+
+
+def import_folder(jid):
+    return ROOT / 'imports' / session_id(jid)
+
+
+def read_import(jid):
+    try:
+        return json.loads((import_folder(jid) / 'status.json').read_text())
+    except (OSError, ValueError):
+        raise ProjectError('import_failed') from None
+
+
+def process_identity(pid):
+    # Linux /proc start ticks prevent signaling a recycled PID after a crash.
+    try:
+        return (Path('/proc') / str(pid) / 'stat').read_text().rsplit(') ', 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+def cancel_import(jid):
+    folder = import_folder(jid)
+    state = read_import(jid)
+    if state['phase'] != 'cloning':
+        return state
+    (folder / 'cancel').touch(mode=0o600, exist_ok=True)
+    pid, identity = state.get('pid'), state.get('identity')
+    if pid and identity and process_identity(pid) == identity:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    return {'id': session_id(jid), 'phase': 'cancelling', 'path': state['path']}
+
+
+def wait_import(jid):
+    folder = import_folder(jid)
+    # Long-poll the worker's inherited lock, waking on exit instead of sleeping.
+    # A 30-second response deadline fits within the SSH request's 45 seconds.
+    def deadline(_signum, _frame):
+        raise TimeoutError()
+    previous = signal.signal(signal.SIGALRM, deadline)
+    try:
+        with (folder / 'running.lock').open('rb') as lock:
+            signal.alarm(30)
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                state = read_import(jid)
+                if state['phase'] == 'cloning':
+                    state.update(phase='failed', code='import_failed')
+                    atomic_json(folder/'status.json', state)
+                return state
+            except TimeoutError:
+                return read_import(jid)
+    except OSError:
+        raise ProjectError('import_failed') from None
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def prepare_project(request):
+    mode = request.get('mode')
+    if mode == 'existing':
+        return {'path': str(selected_folder(request.get('project'))), 'phase': 'done'}
+    if mode == 'empty':
+        return {'path': str(new_project_folder(request.get('project'))), 'phase': 'done'}
+    if mode != 'clone':
+        raise ProjectError('import_failed')
+    url = repository_url(request.get('repository'))
+    if not executable('git'):
+        raise ProjectError('git_missing')
+    jid = session_id(request['id'])
+    folder = import_folder(jid)
+    private_dir(folder.parent)
+    try:
+        folder.mkdir(mode=0o700)
+    except FileExistsError:
+        state = read_import(jid)
+        if state['repository'] != url or state['requestedPath'] != request['project']:
+            raise ProjectError('import_failed')
+        return state  # Recovery after a lost SSH reply never starts another clone.
+    try:
+        destination = new_project_folder(request.get('project'))
+    except Exception:
+        folder.rmdir()
+        raise
+    state = {'id': jid, 'phase': 'cloning', 'path': str(destination), 'repository': url,
+             'requestedPath': request['project'], 'device': destination.stat().st_dev, 'inode': destination.stat().st_ino}
+    atomic_json(folder/'status.json', state)
+    lockfd = os.open(folder/'running.lock', os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+    fcntl.flock(lockfd, fcntl.LOCK_EX)
+    try:
+        # A job keeps its exact helper version if another app later reconnects.
+        source = request.get('source') or (ROOT/'bridge.py').read_text()
+        compile(source, 'worker.py', 'exec')
+        (folder/'worker.py').write_text(source)
+        (folder/'worker.py').chmod(0o600)
+        subprocess.Popen([sys.executable, str(folder/'worker.py'), '--project-job', jid, str(lockfd)],
+                         pass_fds=(lockfd,), start_new_session=True, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        state.update(phase='failed', code='import_failed')
+        atomic_json(folder/'status.json', state)
+        with contextlib.suppress(OSError):
+            destination.rmdir()  # Only removes our reservation if still empty.
+        raise ProjectError('import_failed') from None
+    finally:
+        os.close(lockfd)  # Child owns the inherited lock until job completion.
+    return state
+
+
+def clone_command(url, destination):
+    return [executable('git'), '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always',
+            '-c', 'protocol.ssh.allow=always', '-c', 'core.hooksPath=/dev/null',
+            'clone', '--quiet', '--no-recurse-submodules', '--template=', '--', url, str(destination)]
+
+
+def project_worker(jid, lockfd):
+    folder = import_folder(jid)
+    state = read_import(jid)
+    child = None
+    def cancelled(_signum, _frame):
+        raise ImportCancelled()
+    signal.signal(signal.SIGTERM, cancelled)
+    try:
+        state.update(pid=os.getpid(), identity=process_identity(os.getpid()))
+        atomic_json(folder/'status.json', state)
+        if (folder/'cancel').exists():
+            raise ImportCancelled()
+        destination = Path(state['path'])
+        info = destination.lstat()
+        if destination.is_symlink() or (info.st_dev, info.st_ino) != (state['device'], state['inode']):
+            raise ProjectError('destination_exists')
+        env = os.environ.copy()
+        env.update(GIT_TERMINAL_PROMPT='0', GIT_ASKPASS='/bin/false', SSH_ASKPASS='/bin/false',
+                   GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ForwardAgent=no -o ClearAllForwardings=yes -o PermitLocalCommand=no',
+                   GIT_LFS_SKIP_SMUDGE='1')
+        child = subprocess.Popen(clone_command(state['repository'], destination), env=env,
+                                 start_new_session=True, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        _, stderr = child.communicate(timeout=600)
+        if child.returncode:
+            lower = stderr[-8192:].lower()
+            code = 'git_access' if any(term in lower for term in (b'authentication', b'could not read username', b'permission denied', b'repository not found', b'host key verification', b'publickey')) else 'import_failed'
+            raise ProjectError(code)
+        state.update(phase='done')
+    except ImportCancelled:
+        state.update(phase='cancelled')
+    except subprocess.TimeoutExpired:
+        state.update(phase='failed', code='import_timeout')
+    except ProjectError as exc:
+        state.update(phase='failed', code=exc.code)
+    except Exception:
+        state.update(phase='failed', code='import_failed')
+    finally:
+        # Ignore repeated cancel signals while finishing our own process group.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        if child is not None and child.poll() is None:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(child.pid, signal.SIGTERM)
+            try:
+                child.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(child.pid, signal.SIGKILL)
+                child.communicate()
+        if state['phase'] != 'done':
+            # Never recursively remove anything: partial data remains recoverable.
+            with contextlib.suppress(OSError):
+                Path(state['path']).rmdir()
+        state.pop('pid', None)
+        state.pop('identity', None)
+        atomic_json(folder/'status.json', state)
+        os.close(lockfd)
+
+
 def dispatch(request):
     op = request["op"]
     private_dir(ROOT)
+    if op == "folders":
+        return folders(request.get("project"))
+    if op == "project_prepare":
+        return prepare_project(request)
+    if op == "project_wait":
+        return wait_import(request["id"])
+    if op == "project_cancel":
+        return cancel_import(request["id"])
     if op == "health":
-        return {"user": __import__("getpass").getuser(), "claude": bool(executable("claude")), "tmux": bool(executable("tmux"))}
+        return {"user": __import__("getpass").getuser(), "claude": bool(executable("claude")), "tmux": bool(executable("tmux")), "git": bool(executable("git")), "githubCLI": bool(executable("gh")), "path": str(Path.home()/"projects" if (Path.home()/"projects").is_dir() else Path.home())}
     if op == "install":
         source = request["source"]
         compile(source, "bridge.py", "exec")
@@ -305,6 +557,9 @@ def hook(sid, event):
 
 def main():
     os.umask(0o077)
+    if len(sys.argv) == 4 and sys.argv[1] == "--project-job":
+        project_worker(session_id(sys.argv[2]), int(sys.argv[3]))
+        return
     if len(sys.argv) == 3 and sys.argv[1] == "--hook":
         hook(session_id(sys.argv[2]), json.load(sys.stdin))
         return  # No stdout: hooks must never approve or alter permission decisions.
@@ -317,7 +572,7 @@ def main():
     except Exception as exc:
         # No stdout/stderr from subprocesses: terminal output may contain secrets.
         message = str(exc) if isinstance(exc, (ValueError, FileNotFoundError)) else type(exc).__name__
-        print(json.dumps({"ok": False, "error": message}))
+        print(json.dumps({"ok": False, "error": message, "code": getattr(exc, "code", None)}))
         sys.exit(1)
 
 

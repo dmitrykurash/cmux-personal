@@ -8,28 +8,22 @@ struct PersonalChatMessageView: View {
     var body: some View {
         if message.role == "tool" {
             Label(message.text, systemImage: "wrench.and.screwdriver")
-                .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                .font(PersonalChatTypography.body(12)).foregroundStyle(palette.secondary)
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(palette.sidebar.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+                .background(palette.chip, in: RoundedRectangle(cornerRadius: 8))
         } else if message.role == "user" {
             HStack {
                 Spacer(minLength: 40)
-                messageText.padding(.horizontal, 18).padding(.vertical, 13)
-                    .background(palette.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }.accessibilityLabel(String(localized: "personal.you", defaultValue: "You") + ": " + message.text)
+                messageText.lineSpacing(5).padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(palette.bubble, in: UnevenRoundedRectangle(topLeadingRadius: 19, bottomLeadingRadius: 19, bottomTrailingRadius: 8, topTrailingRadius: 19))
+            }.accessibilityLabel(String(localized: "personal.you", defaultValue: "You", bundle: PersonalChatStrings.bundle) + ": " + message.text)
         } else {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 7) {
-                    Image(systemName: "asterisk").font(.system(size: 18, weight: .light)).foregroundStyle(palette.accent)
-                    Text(verbatim: "Claude").font(.system(size: 13, weight: .semibold, design: .serif))
-                }
-                messageText
-            }.padding(.horizontal, 4)
+            messageText.lineSpacing(8).padding(.horizontal, 4).padding(.vertical, 6)
         }
     }
 
     private var messageText: some View {
         Text((try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(message.text))
-            .font(.system(size: 15)).lineSpacing(6).foregroundStyle(palette.text).textSelection(.enabled)
+            .font(PersonalChatTypography.body(15)).foregroundStyle(palette.text).textSelection(.enabled)
     }
 }

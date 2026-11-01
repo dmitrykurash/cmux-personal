@@ -8,5 +8,7 @@ struct PersonalChatRequest: Encodable, Sendable {
     var text: String? = nil
     var name: String? = nil
     var data: String? = nil
+    var mode: String? = nil
+    var repository: String? = nil
     var source: String? = nil
 }

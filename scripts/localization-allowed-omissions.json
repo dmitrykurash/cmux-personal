@@ -5313,5 +5313,13 @@
   "personal.brand.assistant": {
     "class": "brand",
     "source": "Claude"
+  },
+  "personal.brand.product": {
+    "class": "brand",
+    "source": "cmux Personal"
+  },
+  "personal.import.exampleURL": {
+    "class": "syntax",
+    "source": "https://github.com/owner/repository"
   }
 }

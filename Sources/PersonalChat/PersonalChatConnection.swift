@@ -24,6 +24,12 @@ struct PersonalChatConnection: Codable, Equatable, Sendable {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
+    func githubSignInCommand() throws -> String {
+        let remote = "export PATH=\"$HOME/.local/bin:$PATH\"; " +
+            "gh auth login --hostname github.com --git-protocol https --web && gh auth setup-git --hostname github.com"
+        return try (["/usr/bin/ssh"] + arguments(command: remote, terminal: true)).map(Self.quote).joined(separator: " ")
+    }
+
     func terminalCommand(sessionID: String) throws -> String {
         guard UUID(uuidString: sessionID) != nil else { throw PersonalChatError.invalidConnection }
         let remote = "exec \"$HOME/.local/bin/tmux\" -L cmux-personal attach-session -t " + Self.quote("=cmp-" + sessionID.lowercased())

@@ -28,10 +28,12 @@ early-use build, not a replacement for the full Ghostty-based cmux application.
 
 ## Native interface
 
-Version 0.2 uses a warm dark/light palette, a bordered composer card, a compact
-project/history sidebar with search, and a centered welcome screen. The layout
-was informed by the Claude Desktop screenshot in [this Composio walkthrough](https://composio.dev/content/how-to-use-asana-with-claude-and-cursor-for-effective-project-management);
-no third-party UI code or artwork is bundled.
+Version 0.3 adapts the owner's [Axiom Desktop design](https://github.com/astrea-foundation/axiom-desktop/tree/21f8136fbfdde6530e96b4df14a92a9b661a79b0):
+glass stage and composer, exact light/dark color tokens, 22 px corner radii,
+DM Sans / PP Cirka typography, circular send control and eased transitions.
+The interface is explicitly **English**, independent of the macOS language.
+It uses an original chat/terminal mark and app icon; no Axiom logos are bundled.
+Asset attribution and font licenses are in `personal/Assets/`.
 
 The native editor grows with text up to a bounded height, supports undo and
 selection, sends on Return, and inserts a newline on Shift-Return. Return during
@@ -53,11 +55,33 @@ a model picker that the bridge cannot control.
 3. In Connection, enter the host/alias, port and optional key path. Click Connect.
    The app installs its small Python hook helper under
    `~/.local/share/cmux-personal/` on the VPS. There is no network listener.
-4. Add a project with an existing absolute VPS path, for example
-   `/home/developer/projects/my-project`, then New chat. Open terminal whenever
-   Claude needs startup confirmation, permissions or an answer to a question.
-5. Select files with **+**, or drop them onto the composer, then Send. The app never automatically
+4. Use **Add project** next to search. Choose **Repository** to clone an HTTPS
+   or SSH URL, **New folder** to create a project directory, or **Existing folder**
+   to browse the VPS. Review its name and absolute folder, then **Add project**.
+   The selected folder is always visible below the project name. All chats in
+   one project share its files; different projects can use different folders.
+5. Choose **New chat**. Open terminal whenever Claude needs first-folder trust,
+   permissions or an answer to a question. Trust is never approved by the app.
+6. Select files with the **paperclip**, or drop them onto the composer, then Send. The app never automatically
    resends a message after an uncertain SSH failure; inspect the terminal first.
+
+### Importing repositories yourself
+
+Git must be installed on the VPS. `personal/scripts/bootstrap-git-ubuntu.sh`
+provides an optional user-local Git/GitHub CLI on a compatible Ubuntu host.
+For private GitHub repositories, **Sign in to GitHub…** opens a normal SSH
+terminal running GitHub's device login. Complete that login yourself, then use
+an HTTPS repository URL. Provider credentials stay on the VPS; never embed a
+password/token in a URL. SSH URLs require the VPS to have its own trusted host
+entry and appropriate key. No Mac SSH agent is forwarded.
+
+Clone runs as a detached worker so a brief SSH interruption does not restart it.
+**Check import** recovers the original job after uncertain delivery. **Cancel**
+stops that worker's Git process group. Existing folders are never overwritten;
+partial data remains recoverable. Clones have a ten-minute limit, skip LFS file
+smudging and recursive submodules, and do not run repository hooks/templates.
+Large LFS files, submodules and subsequent Git operations remain available in
+the interactive terminal or through Claude under its regular permissions.
 
 Local settings are stored in `~/Library/Application Support/cmux-personal/config.json`
 with owner-only permissions. They contain host, key **path** and project metadata,
@@ -98,6 +122,9 @@ gh workflow run personal-macos.yml --ref personal/native-ssh-chat -f full_cmux=t
 A GitHub OAuth token needs the `workflow` scope to push a workflow change. If
 that scope is unavailable, retain the prepared commit/patch locally and push
 after enabling it. Do not put credentials in repository files or Actions inputs.
+
+For a full local tagged build, run `personal/scripts/apply-personal-branding.sh`
+in the build checkout first; the GitHub workflow does this automatically.
 
 For the standalone preview on a Mac with Command Line Tools:
 

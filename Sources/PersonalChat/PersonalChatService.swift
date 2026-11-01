@@ -10,7 +10,7 @@ actor PersonalChatService: PersonalChatServing {
     func request(_ request: PersonalChatRequest, connection: PersonalChatConnection) async throws -> PersonalChatReply {
         guard !source.isEmpty else { throw PersonalChatError.missingBridge }
         var request = request
-        if request.op == "install" { request.source = source }
+        if request.op == "install" || (request.op == "project_prepare" && request.mode == "clone") { request.source = source }
         let input = try JSONEncoder().encode(request)
         let command = "python3 -c " + PersonalChatConnection.quote(source)
         let arguments = try connection.arguments(command: command)
@@ -49,7 +49,10 @@ actor PersonalChatService: PersonalChatServing {
             try Task.checkCancellation()
             let output = try Data(contentsOf: outputURL)
             guard let reply = try? JSONDecoder().decode(PersonalChatReply.self, from: output) else { throw PersonalChatError.sshFailed }
-            guard reply.ok, status == 0 else { throw PersonalChatError.remote(reply.error ?? "SSH failed") }
+            guard reply.ok, status == 0 else {
+                if let code = reply.code { throw PersonalChatProjectError(code: code) }
+                throw PersonalChatError.remote(reply.error ?? "SSH failed")
+            }
             return reply
         } onCancel: {
             if process.isRunning { process.terminate() }

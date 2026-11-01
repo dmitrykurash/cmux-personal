@@ -8,6 +8,7 @@ struct PersonalChatPreview: App {
     @State private var model: PersonalChatModel
 
     init() {
+        PersonalChatTypography.register()
         let url = Bundle.main.url(forResource: "personal-bridge", withExtension: "py")
         let source = url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
         let file = FileManager.default.homeDirectoryForCurrentUser
@@ -19,7 +20,8 @@ struct PersonalChatPreview: App {
         WindowGroup("cmux Personal") {
             PersonalChatView(model: model, openTerminal: Self.openTerminal)
         }
-        .defaultSize(width: 1120, height: 780)
+        .defaultSize(width: 1320, height: 860)
+        .windowStyle(.hiddenTitleBar)
     }
 
     @MainActor private static func openTerminal(_ command: String) {

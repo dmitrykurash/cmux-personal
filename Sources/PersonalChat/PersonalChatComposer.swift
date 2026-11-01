@@ -8,68 +8,85 @@ struct PersonalChatComposer: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var focused = false
     @State private var dropTarget = false
+    @State private var hovered = false
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
-    private var placeholder: String { String(localized: "personal.composer.placeholder", defaultValue: "How can I help you today?") }
+    private var placeholder: String { String(localized: "personal.composer.placeholder", defaultValue: "How can I help you today?", bundle: PersonalChatStrings.bundle) }
 
     var body: some View {
         VStack(spacing: 10) {
             if model.selectedID != nil && model.phase != "ready" {
                 statusRow
             }
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 if !model.attachments.isEmpty { attachmentStrip }
-                ZStack(alignment: .topLeading) {
-                    if model.draft.isEmpty {
-                        Text(placeholder).font(.system(size: 15)).foregroundStyle(palette.secondary)
-                            .padding(.top, 8).allowsHitTesting(false)
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "lock").font(.system(size: 13)).foregroundStyle(palette.muted)
+                        .padding(.top, 5).help(String(localized: "personal.connection", defaultValue: "Connection", bundle: PersonalChatStrings.bundle))
+                    ZStack(alignment: .topLeading) {
+                        if model.draft.isEmpty {
+                            Text(placeholder).font(PersonalChatTypography.body(14.5)).foregroundStyle(palette.muted)
+                                .padding(.top, 2).allowsHitTesting(false)
+                        }
+                        PersonalChatTextEditor(
+                            text: $model.draft, editable: !model.busy && model.selectedID != nil,
+                            canSubmit: model.canSend, label: placeholder,
+                            textColor: NSColor(palette.text), insertionColor: NSColor(palette.text),
+                            focusChanged: { focused = $0 }, submit: { Task { await model.send() } }
+                        ).fixedSize(horizontal: false, vertical: true)
                     }
-                    PersonalChatTextEditor(
-                        text: $model.draft, editable: !model.busy && model.selectedID != nil,
-                        canSubmit: model.canSend, label: placeholder,
-                        textColor: NSColor(palette.text), insertionColor: NSColor(palette.accent),
-                        focusChanged: { focused = $0 }, submit: { Task { await model.send() } }
-                    ).fixedSize(horizontal: false, vertical: true)
-                }
-                HStack(spacing: 4) {
+                }.padding(.trailing, 6)
+                HStack(spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "asterisk").font(.system(size: 11, weight: .medium))
+                        Text(verbatim: "Claude Code").font(PersonalChatTypography.body(12, weight: .medium))
+                    }.padding(.horizontal, 9).frame(height: 28)
+                        .background(palette.chip, in: RoundedRectangle(cornerRadius: 7))
                     Button(action: chooseFiles) {
-                        Image(systemName: "plus").font(.system(size: 18, weight: .regular)).frame(width: 30, height: 30)
-                    }.buttonStyle(PersonalChatHoverStyle()).disabled(model.busy || model.selectedID == nil)
-                        .help(String(localized: "personal.attach", defaultValue: "Attach files") + "\n" + String(localized: "personal.files.note", defaultValue: "Files are uploaded to your VPS when you send."))
-                        .accessibilityLabel(String(localized: "personal.attach", defaultValue: "Attach files"))
-                    Button { model.showingSettings = true } label: {
-                        Image(systemName: "slider.horizontal.3").font(.system(size: 14)).frame(width: 30, height: 30)
-                    }.buttonStyle(PersonalChatHoverStyle()).disabled(model.busy)
-                        .help(String(localized: "personal.connection", defaultValue: "Connection"))
-                        .accessibilityLabel(String(localized: "personal.connection", defaultValue: "Connection"))
+                        Image(systemName: "paperclip").font(.system(size: 14)).frame(width: 28, height: 28)
+                    }.buttonStyle(PersonalChatHoverStyle(radius: 7)).disabled(model.busy || model.selectedID == nil)
+                        .help(String(localized: "personal.attach", defaultValue: "Attach files", bundle: PersonalChatStrings.bundle) + "\n" + String(localized: "personal.files.note", defaultValue: "Files are uploaded to your VPS when you send.", bundle: PersonalChatStrings.bundle))
+                        .accessibilityLabel(String(localized: "personal.attach", defaultValue: "Attach files", bundle: PersonalChatStrings.bundle))
+                    Button(action: openTerminal) {
+                        Image(systemName: "terminal").font(.system(size: 13)).frame(width: 28, height: 28)
+                    }.buttonStyle(PersonalChatHoverStyle(radius: 7))
+                        .disabled(model.selectedID == nil || model.phase == "offline" || !model.connected)
+                        .help(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle))
+                        .accessibilityLabel(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle))
                     Spacer()
-                    Text(verbatim: "Claude Code").font(.system(size: 13, weight: .medium, design: .serif)).foregroundStyle(palette.secondary)
-                        .padding(.trailing, 10)
                     sendButton
                 }.foregroundStyle(palette.secondary)
             }
-            .padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 12)
-            .background(palette.composer, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.leading, 16).padding(.trailing, 10).padding(.top, 12).padding(.bottom, 8)
+            .background(focused ? palette.composerFocus : (hovered ? palette.composerHover : palette.composer),
+                        in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(dropTarget ? palette.accent : (focused ? palette.border.opacity(1) : palette.border.opacity(0.7)), lineWidth: dropTarget ? 2 : 1)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(dropTarget ? palette.accent : (focused ? palette.focusBorder : (hovered ? palette.strongBorder : palette.border)), lineWidth: dropTarget ? 2 : 1)
             }
-            .shadow(color: .black.opacity(scheme == .dark ? 0.10 : 0.055), radius: focused ? 16 : 9, y: 4)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: focused)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: dropTarget)
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(palette.focusRing, lineWidth: 4).padding(-2).opacity(focused ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: .black.opacity(scheme == .dark ? 0.12 : 0.04), radius: 6, y: 2)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: focused)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hovered)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: dropTarget)
+            .onHover { hovered = $0 }
             .dropDestination(for: URL.self) { urls, _ in
                 guard !model.busy, model.selectedID != nil else { return false }
                 let files = urls.filter { $0.isFileURL }
                 addFiles(files)
                 return !files.isEmpty
             } isTargeted: { dropTarget = $0 }
-            if model.selectedID == nil {
-                Button(model.connected ? String(localized: "personal.new", defaultValue: "New chat") : String(localized: "personal.connect", defaultValue: "Connect")) {
+            if model.selectedID == nil && model.connected && model.project != nil {
+                Button(model.connected ? String(localized: "personal.new", defaultValue: "New chat", bundle: PersonalChatStrings.bundle) : String(localized: "personal.connect", defaultValue: "Connect", bundle: PersonalChatStrings.bundle)) {
                     Task { if model.connected { await model.startSession() } else { await model.connect() } }
-                }.buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(palette.accent)
+                }.buttonStyle(.plain).font(PersonalChatTypography.body(12, weight: .medium)).foregroundStyle(palette.accent)
                     .disabled(model.busy || (model.connected && model.project == nil))
             } else {
-                Text(String(localized: "personal.composer.hint", defaultValue: "Enter to send · Shift + Enter for a new line"))
-                    .font(.system(size: 10.5)).foregroundStyle(palette.muted)
+                Text(String(localized: "personal.composer.hint", defaultValue: "Enter to send · Shift + Enter for a new line", bundle: PersonalChatStrings.bundle))
+                    .font(PersonalChatTypography.body(11.5)).foregroundStyle(palette.muted)
             }
         }
     }
@@ -80,21 +97,20 @@ struct PersonalChatComposer: View {
             Task { if stopping { await model.interrupt() } else { await model.send() } }
         } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(model.canSend || stopping ? palette.accent : palette.hover)
+                Circle().fill(palette.send).opacity(model.canSend || stopping ? 1 : 0.4)
                 if model.busy {
                     ProgressView().controlSize(.small).scaleEffect(0.7)
                 } else {
                     Image(systemName: stopping ? "stop.fill" : "arrow.up")
                         .font(.system(size: stopping ? 11 : 16, weight: .semibold))
-                        .foregroundStyle(model.canSend || stopping ? palette.onAccent : palette.muted)
+                        .foregroundStyle(palette.onAccent)
                         .contentTransition(.opacity)
                 }
-            }.frame(width: 32, height: 32)
-        }.buttonStyle(.plain)
+            }.frame(width: 34, height: 34)
+        }.buttonStyle(PersonalChatSendStyle())
             .disabled(model.busy || (!model.canSend && !stopping))
-            .help(stopping ? String(localized: "personal.stop", defaultValue: "Stop") : String(localized: "personal.send", defaultValue: "Send"))
-            .accessibilityLabel(stopping ? String(localized: "personal.stop", defaultValue: "Stop") : String(localized: "personal.send", defaultValue: "Send"))
+            .help(stopping ? String(localized: "personal.stop", defaultValue: "Stop", bundle: PersonalChatStrings.bundle) : String(localized: "personal.send", defaultValue: "Send", bundle: PersonalChatStrings.bundle))
+            .accessibilityLabel(stopping ? String(localized: "personal.stop", defaultValue: "Stop", bundle: PersonalChatStrings.bundle) : String(localized: "personal.send", defaultValue: "Send", bundle: PersonalChatStrings.bundle))
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.canSend)
     }
 
@@ -102,23 +118,23 @@ struct PersonalChatComposer: View {
         HStack(spacing: 8) {
             if model.phase == "busy" || model.busy {
                 ProgressView().controlSize(.mini)
-                Text(String(localized: "personal.working", defaultValue: "Claude is working…"))
+                Text(String(localized: "personal.working", defaultValue: "Claude is working…", bundle: PersonalChatStrings.bundle))
             } else if model.phase == "offline" {
                 Image(systemName: "clock.arrow.circlepath")
-                Text(String(localized: "personal.saved", defaultValue: "Saved conversation"))
+                Text(String(localized: "personal.saved", defaultValue: "Saved conversation", bundle: PersonalChatStrings.bundle))
                 Spacer()
-                Button(String(localized: "personal.resume", defaultValue: "Resume session")) { Task { await model.startSession(resume: true) } }
+                Button(String(localized: "personal.resume", defaultValue: "Resume session", bundle: PersonalChatStrings.bundle)) { Task { await model.startSession(resume: true) } }
                     .disabled(!model.connected || model.busy)
             } else {
                 Image(systemName: "hand.raised")
-                Text(String(localized: "personal.permission", defaultValue: "Continue in the terminal to review permissions or questions.")).lineLimit(2)
+                Text(String(localized: "personal.permission", defaultValue: "Continue in the terminal to review permissions or questions.", bundle: PersonalChatStrings.bundle)).lineLimit(2)
                 Spacer()
                 Button(action: openTerminal) { Image(systemName: "arrow.up.right") }
-                    .help(String(localized: "personal.terminal", defaultValue: "Open terminal"))
-                    .accessibilityLabel(String(localized: "personal.terminal", defaultValue: "Open terminal"))
+                    .help(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle))
+                    .accessibilityLabel(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle))
             }
             Spacer(minLength: 0)
-        }.font(.system(size: 12)).foregroundStyle(palette.secondary).buttonStyle(.plain).padding(.horizontal, 4)
+        }.font(PersonalChatTypography.body(12)).foregroundStyle(palette.secondary).buttonStyle(.plain).padding(.horizontal, 4)
     }
 
     private var attachmentStrip: some View {
@@ -131,8 +147,8 @@ struct PersonalChatComposer: View {
                         Button { model.attachments.removeAll { $0 == url } } label: {
                             Image(systemName: "xmark").font(.system(size: 9, weight: .medium))
                         }.buttonStyle(.plain).disabled(model.busy)
-                            .accessibilityLabel(String(localized: "personal.attachment.remove", defaultValue: "Remove attachment"))
-                    }.font(.system(size: 12)).foregroundStyle(palette.text)
+                            .accessibilityLabel(String(localized: "personal.attachment.remove", defaultValue: "Remove attachment", bundle: PersonalChatStrings.bundle))
+                    }.font(PersonalChatTypography.body(12)).foregroundStyle(palette.text)
                         .padding(.horizontal, 10).padding(.vertical, 8)
                         .background(palette.hover, in: RoundedRectangle(cornerRadius: 9))
                 }

@@ -7,6 +7,13 @@ DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
 # upstream incremental-resource early exit, so helper-only edits are included.
 mkdir -p "$DEST"
 cp "${SRCROOT}/personal/bridge.py" "$DEST/personal-bridge.py"
+python3 - "$DEST/PersonalChatAssets" <<'PYLOGO'
+from pathlib import Path
+import sys
+for name in ('axiom-symbol.svg', 'axiom-symbol.png'):
+    (Path(sys.argv[1])/name).unlink(missing_ok=True)
+PYLOGO
+ditto "${SRCROOT}/personal/Assets" "$DEST/PersonalChatAssets"
 GHOSTTY_DEST="${DEST}/ghostty"
 TERMINFO_DEST="${DEST}/terminfo"
 CMUX_SHELL_DEST="${DEST}/shell-integration"

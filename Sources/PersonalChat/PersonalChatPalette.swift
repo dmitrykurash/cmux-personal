@@ -1,21 +1,34 @@
 import SwiftUI
 
-/// Warm neutral surfaces keep the composer distinct in both system appearances.
+/// Axiom Desktop's chat-ui tokens, adapted to native semantic surfaces.
 struct PersonalChatPalette {
     let scheme: ColorScheme
-    var canvas: Color { color(0x262624, 0xFAF9F5) }
-    var sidebar: Color { color(0x20201E, 0xF0EEE6) }
-    var composer: Color { color(0x323230, 0xFFFFFF) }
-    var border: Color { color(0x50504A, 0xDCDAD2) }
-    var divider: Color { color(0x363632, 0xE4E2DA) }
-    var text: Color { color(0xE9E8E2, 0x302F2B) }
-    var secondary: Color { color(0xAAA9A1, 0x77766D) }
-    var muted: Color { color(0x838279, 0x8C8B82) }
-    var hover: Color { color(0x33332F, 0xE6E3D9) }
-    var selection: Color { color(0x383833, 0xE4E0D4) }
-    var bubble: Color { color(0x35352F, 0xEEECE2) }
-    var accent: Color { color(0xD28D70, 0xB86949) }
-    var onAccent: Color { color(0x211E1A, 0xFFFFFF) }
+    private var ink: Color { scheme == .dark ? .white : color(0x101014, 0x101014) }
+    var canvas: Color { color(0x141416, 0xF2F2F4) }
+    var canvasTop: Color { color(0x18181B, 0xF2F2F4) }
+    var canvasBottom: Color { color(0x0E0E10, 0xE8E8EC) }
+    var sidebar: Color { color(0x18181B, 0xECECEF) }
+    var stage: Color { .white.opacity(scheme == .dark ? 0.045 : 0.72) }
+    var composer: Color { .white.opacity(scheme == .dark ? 0.05 : 0.72) }
+    var composerHover: Color { .white.opacity(scheme == .dark ? 0.065 : 0.78) }
+    var composerFocus: Color { .white.opacity(scheme == .dark ? 0.075 : 0.80) }
+    var border: Color { ink.opacity(0.08) }
+    var strongBorder: Color { ink.opacity(scheme == .dark ? 0.14 : 0.15) }
+    var focusBorder: Color { ink.opacity(0.30) }
+    var focusRing: Color { ink.opacity(scheme == .dark ? 0.08 : 0.06) }
+    var divider: Color { border }
+    var text: Color { color(0xF4F4F6, 0x101014) }
+    var secondary: Color { color(0xB4B4BA, 0x56565F) }
+    var muted: Color { color(0x86868E, 0x84848E) }
+    var faint: Color { color(0x5F5F67, 0xA6A6AF) }
+    var hover: Color { ink.opacity(0.055) }
+    var chip: Color { ink.opacity(scheme == .dark ? 0.07 : 0.045) }
+    var selection: Color { color(0x2C2C31, 0xFFFFFF) }
+    var bubble: Color { .white.opacity(scheme == .dark ? 0.075 : 0.82) }
+    var accent: Color { color(0xFF7653, 0xFF7653) }
+    var send: Color { color(0xF4F4F6, 0xFF7653) }
+    var onAccent: Color { color(0x101014, 0x1F1F1F) }
+    var success: Color { color(0x5CB86A, 0x3F9B46) }
 
     private func color(_ dark: UInt32, _ light: UInt32) -> Color {
         let hex = scheme == .dark ? dark : light

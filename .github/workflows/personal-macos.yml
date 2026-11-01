@@ -88,6 +88,8 @@ jobs:
             --expected-commit "$client_commit" --require-capability wireguard-hub \
             --attest-signer-workflow 'manaflow-ai/cmux/.github/workflows/cmux-tui-artifacts.yml'
           echo "CMUX_TUI_CLIENT_LOCAL=$client_bundle/Contents/Resources/bin/cmux-tui" >> "$GITHUB_ENV"
+      - name: Apply personal app branding
+        run: personal/scripts/apply-personal-branding.sh
       - name: Build the isolated personal fork
         run: |
           set -euo pipefail

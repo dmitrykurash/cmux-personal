@@ -32,14 +32,15 @@ struct PersonalChatTextEditor: NSViewRepresentable {
         editor.isHorizontallyResizable = false
         editor.isVerticallyResizable = true
         editor.autoresizingMask = [.width]
-        editor.font = .systemFont(ofSize: 15)
-        editor.textContainerInset = NSSize(width: 0, height: 8)
+        editor.font = PersonalChatTypography.editor(14.5)
+        editor.textContainerInset = NSSize(width: 0, height: 2)
         editor.textContainer?.lineFragmentPadding = 0
         editor.textContainer?.widthTracksTextView = true
         editor.isAutomaticQuoteSubstitutionEnabled = false
         editor.isAutomaticDashSubstitutionEnabled = false
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 3
+        paragraph.minimumLineHeight = 24
+        paragraph.maximumLineHeight = 24
         editor.defaultParagraphStyle = paragraph
         editor.setAccessibilityIdentifier("personal.composer.editor")
         // The surrounding composer owns file drops as attachments.
@@ -63,11 +64,11 @@ struct PersonalChatTextEditor: NSViewRepresentable {
         guard let editor = scroll.documentView as? NSTextView,
               let container = editor.textContainer, let layout = editor.layoutManager else { return nil }
         let width = max(1, proposal.width ?? 600)
-        editor.setFrameSize(NSSize(width: width, height: max(52, editor.frame.height)))
+        editor.setFrameSize(NSSize(width: width, height: max(28, editor.frame.height)))
         container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
         layout.ensureLayout(for: container)
-        let height = ceil(layout.usedRect(for: container).height) + 18
-        editor.setFrameSize(NSSize(width: width, height: max(52, height)))
-        return CGSize(width: width, height: min(180, max(52, height)))
+        let height = ceil(layout.usedRect(for: container).height) + 4
+        editor.setFrameSize(NSSize(width: width, height: max(28, height)))
+        return CGSize(width: width, height: min(240, max(28, height)))
     }
 }
