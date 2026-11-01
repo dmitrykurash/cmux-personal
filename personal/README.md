@@ -49,7 +49,11 @@ connection settings and project history. Use a chat’s **⋯ → Archive chat**
 Open Archive and use **⋯ → Restore chat** to put it back. Archive starts closed,
 stays closed when chats are archived, and shows 20 matching chats per page with
 **Load more**. Search filters both lists without forcing the archive open.
-Project disclosure is independent of the selected conversation. Archiving the open chat preserves its unsent draft.
+Project disclosure is independent of the selected conversation. Version 0.5.1
+shows a small Loading chats indicator while the server returns the list, then
+fades the rows in. Empty results and failures have distinct states, with Retry
+for a failed fetch. Rapid project switches discard stale replies without
+clearing the current loader. Reduce Motion disables the row animation. Archiving the open chat preserves its unsent draft.
 
 Archive membership is private to this Mac and persists in `config.archive.json`
 beside the existing configuration. It does not delete transcripts or files,

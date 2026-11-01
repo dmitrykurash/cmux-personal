@@ -84,16 +84,47 @@ struct PersonalChatView: View {
                     ForEach(model.projects) { project in
                         projectRow(project)
                         if model.projectID == project.id && sidebarState.projectIsExpanded(project.id) {
-                            ForEach(matching(model.activeSessions)) { session in
-                                sessionRow(session, projectID: project.id, archived: false).padding(.leading, 20)
-                            }
-                            archiveSection(projectID: project.id)
+                            projectChats(project)
                         }
                     }
                 }
             }.scrollIndicators(.hidden)
             connectionFooter
         }.padding(.horizontal, 4)
+    }
+
+    private var loadingChats: Bool { model.isLoadingSessions || (model.busy && !model.connected) }
+
+    private func projectChats(_ project: PersonalChatProject) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if loadingChats {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.mini)
+                    Text(String(localized: "personal.sessions.loading", defaultValue: "Loading chats…", bundle: PersonalChatStrings.bundle))
+                        .font(PersonalChatTypography.body(11.5)).foregroundStyle(palette.muted)
+                }.frame(height: 30).padding(.leading, 32)
+                    .accessibilityElement(children: .combine).transition(.opacity)
+            }
+            ForEach(matching(model.activeSessions)) { session in
+                sessionRow(session, projectID: project.id, archived: false).padding(.leading, 20).transition(.opacity)
+            }
+            if let error = model.sessionsLoadError {
+                HStack(spacing: 8) {
+                    Text(String(localized: "personal.sessions.failed", defaultValue: "Couldn’t load chats", bundle: PersonalChatStrings.bundle))
+                        .font(PersonalChatTypography.body(11.5)).foregroundStyle(palette.muted)
+                    Button(String(localized: "personal.sessions.retry", defaultValue: "Retry", bundle: PersonalChatStrings.bundle)) { Task { await model.reloadSessions() } }
+                        .buttonStyle(PersonalChatHoverStyle(radius: 6)).font(PersonalChatTypography.body(11.5))
+                        .disabled(model.busy || loadingChats || !model.connected)
+                }.padding(.leading, 32).padding(.vertical, 6).help(error)
+            } else if model.connected && !loadingChats && model.sessions.isEmpty {
+                Text(String(localized: "personal.sessions.empty", defaultValue: "No chats yet", bundle: PersonalChatStrings.bundle))
+                    .font(PersonalChatTypography.body(11.5)).foregroundStyle(palette.muted)
+                    .padding(.leading, 32).padding(.vertical, 6).transition(.opacity)
+            }
+            archiveSection(projectID: project.id)
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.isLoadingSessions)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.sessions.map(\.id))
     }
 
     private func matching(_ sessions: [PersonalChatSession]) -> [PersonalChatSession] {
@@ -132,7 +163,7 @@ struct PersonalChatView: View {
                 }.padding(.horizontal, 10).frame(height: 32)
             }.buttonStyle(PersonalChatHoverStyle(radius: 9)).foregroundStyle(palette.muted)
                 .help(String(localized: "personal.archive.help", defaultValue: "Archived chats stay on your VPS. Running sessions keep working.", bundle: PersonalChatStrings.bundle))
-            if expanded {
+            if expanded && !(loadingChats && model.sessions.isEmpty) {
                 if model.archivedSessions.isEmpty {
                     Text(String(localized: "personal.archive.empty", defaultValue: "No archived chats", bundle: PersonalChatStrings.bundle))
                         .font(PersonalChatTypography.body(11)).foregroundStyle(palette.muted)

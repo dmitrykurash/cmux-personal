@@ -7,6 +7,9 @@ final class PersonalChatModel {
     var projects: [PersonalChatProject] = []
     var projectID: UUID?
     var sessions: [PersonalChatSession] = []
+    private(set) var isLoadingSessions = false
+    private(set) var sessionsLoadError: String?
+    private var sessionListRequestID: UUID?
     private(set) var archivedSessionIDs: [String: Set<String>] = [:]
     var selectedID: String?
     var messages: [PersonalChatMessage] = []
@@ -129,6 +132,9 @@ final class PersonalChatModel {
         defer { busy = false }
         let previousSessionID = selectedID
         connected = false
+        sessionListRequestID = nil
+        isLoadingSessions = false
+        sessionsLoadError = nil
         stopRefresh()
         selectionGeneration = UUID()
         selectedID = nil
@@ -147,7 +153,7 @@ final class PersonalChatModel {
             if let previousSessionID, sessions.contains(where: { $0.id == previousSessionID }) {
                 activateSession(previousSessionID)
             }
-            if error == nil { try await save() }
+            if error == nil && sessionsLoadError == nil { try await save() }
         } catch {
             selectedID = previousSessionID
             self.error = error.localizedDescription
@@ -179,6 +185,9 @@ final class PersonalChatModel {
         projectID = id
         selectedID = nil
         sessions = []
+        sessionListRequestID = nil
+        isLoadingSessions = false
+        sessionsLoadError = nil
         clearConversation()
         draft = ""
         attachments = []
@@ -189,12 +198,21 @@ final class PersonalChatModel {
 
     func reloadSessions() async {
         guard connected, let project else { return }
-        let generation = selectionGeneration
+        let requestID = UUID()
+        sessionListRequestID = requestID
+        isLoadingSessions = true
+        sessionsLoadError = nil
+        defer {
+            if sessionListRequestID == requestID { isLoadingSessions = false }
+        }
         do {
             let result = try await service.request(.init(op: "list", project: project.path), connection: connection)
-            guard generation == selectionGeneration else { return }
+            guard projectID == project.id, sessionListRequestID == requestID else { return }
             sessions = result.sessions ?? []
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            guard projectID == project.id, sessionListRequestID == requestID, !Task.isCancelled else { return }
+            sessionsLoadError = error.localizedDescription
+        }
     }
 
     func selectSession(_ id: String) {
@@ -373,6 +391,9 @@ final class PersonalChatModel {
                 projectID = nextProjectID
                 selectedID = nil
                 sessions = []
+                sessionListRequestID = nil
+                isLoadingSessions = false
+                sessionsLoadError = nil
                 clearConversation()
                 draft = ""
                 attachments = []
