@@ -3,7 +3,7 @@
 set -euo pipefail
 config="$HOME/Library/Application Support/cmux-personal/config.json"
 if [[ ! -f "$config" ]]; then
-  echo 'Open cmux Personal and configure Connection first.'
+  echo 'Open CheatCode and configure Connection first.'
   read -r -p 'Press Return to close. ' _
   exit 1
 fi
@@ -16,7 +16,7 @@ if [[ "$key" != /* || ! -f "$key" ]]; then
   read -r -p 'Press Return to close. ' _
   exit 1
 fi
-echo 'One-time setup for cmux Personal'
+echo 'One-time setup for CheatCode'
 echo
 echo 'This stores the password protecting your configured SSH key in macOS Keychain.'
 echo 'The app can then connect after a restart. It does not store the password itself.'
@@ -38,7 +38,7 @@ if /usr/bin/ssh -T -o IdentityAgent=none -o IdentitiesOnly=yes \
   -i "$key" -p "$port" -l developer -- "$host" true; then
   echo
   echo 'READY. You can shut down your Mac. Keep the VPS running.'
-  echo 'Tomorrow: sign in to macOS, then open cmux Personal Preview from Applications.'
+  echo 'Tomorrow: sign in to macOS, then open CheatCode from Applications.'
 else
   echo
   echo 'The password was saved, but the connection check failed.'

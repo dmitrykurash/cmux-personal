@@ -5316,10 +5316,14 @@
   },
   "personal.brand.product": {
     "class": "brand",
-    "source": "cmux Personal"
+    "source": "CheatCode"
   },
   "personal.import.exampleURL": {
     "class": "syntax",
     "source": "https://github.com/owner/repository"
+  },
+  "personal.menu": {
+    "class": "brand",
+    "source": "CheatCode…"
   }
 }

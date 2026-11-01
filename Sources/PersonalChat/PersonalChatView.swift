@@ -9,6 +9,7 @@ struct PersonalChatView: View {
     @State private var sidebarVisible = true
     @State private var search = ""
     @State private var addingProject = false
+    @State private var expandedArchives: Set<UUID> = []
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
     private var newChatLabel: String { String(localized: "personal.new", defaultValue: "New chat", bundle: PersonalChatStrings.bundle) }
     private var motion: Animation? { reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.3) }
@@ -76,21 +77,65 @@ struct PersonalChatView: View {
                     ForEach(model.projects) { project in
                         projectRow(project)
                         if model.projectID == project.id {
-                            ForEach(model.sessions.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { session in
-                                Button { model.selectSession(session.id) } label: {
-                                    Text(session.title == "New chat" ? newChatLabel : session.title)
-                                        .font(PersonalChatTypography.body(12.5)).lineLimit(1).truncationMode(.tail)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 12).frame(height: 32)
-                                }.buttonStyle(PersonalChatHoverStyle(selected: model.selectedID == session.id, radius: 9))
-                                    .padding(.leading, 20).disabled(model.busy).help(session.title)
+                            ForEach(matching(model.activeSessions)) { session in
+                                sessionRow(session, projectID: project.id, archived: false).padding(.leading, 20)
                             }
+                            archiveSection(projectID: project.id)
                         }
                     }
                 }
             }.scrollIndicators(.hidden)
             connectionFooter
         }.padding(.horizontal, 4)
+    }
+
+    private func matching(_ sessions: [PersonalChatSession]) -> [PersonalChatSession] {
+        sessions.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+    }
+
+    private func sessionRow(_ session: PersonalChatSession, projectID: UUID, archived: Bool) -> some View {
+        PersonalChatSessionRow(session: session, selected: model.selectedID == session.id, archived: archived) {
+            model.selectSession(session.id)
+        } toggleArchive: {
+            Task {
+                await model.setArchived(session.id, archived: !archived, inProject: projectID)
+                if model.isArchived(session.id) { withAnimation(motion) { _ = expandedArchives.insert(projectID) } }
+            }
+        }.disabled(model.busy)
+    }
+
+    private func archiveSection(projectID: UUID) -> some View {
+        let expanded = expandedArchives.contains(projectID) || !search.isEmpty
+        return VStack(alignment: .leading, spacing: 3) {
+            Button {
+                withAnimation(motion) {
+                    if expandedArchives.contains(projectID) { expandedArchives.remove(projectID) }
+                    else { expandedArchives.insert(projectID) }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 8, weight: .semibold))
+                    Label(String(localized: "personal.archive.title", defaultValue: "Archive", bundle: PersonalChatStrings.bundle), systemImage: "archivebox")
+                        .font(PersonalChatTypography.body(12))
+                    Spacer(minLength: 0)
+                }.padding(.horizontal, 10).frame(height: 32)
+            }.buttonStyle(PersonalChatHoverStyle(radius: 9)).foregroundStyle(palette.muted)
+                .help(String(localized: "personal.archive.help", defaultValue: "Archived chats stay on your VPS. Running sessions keep working.", bundle: PersonalChatStrings.bundle))
+            if expanded {
+                if model.archivedSessions.isEmpty {
+                    Text(String(localized: "personal.archive.empty", defaultValue: "No archived chats", bundle: PersonalChatStrings.bundle))
+                        .font(PersonalChatTypography.body(11)).foregroundStyle(palette.muted)
+                        .padding(.leading, 27).padding(.vertical, 6)
+                } else {
+                    ForEach(matching(model.archivedSessions)) { session in
+                        sessionRow(session, projectID: projectID, archived: true).padding(.leading, 12)
+                    }
+                }
+            }
+        }.padding(.leading, 20)
+        .onChange(of: model.selectedID, initial: true) {
+            if let selectedID = model.selectedID, model.isArchived(selectedID) { expandedArchives.insert(projectID) }
+        }
     }
 
     private func projectRow(_ project: PersonalChatProject) -> some View {
@@ -119,7 +164,7 @@ struct PersonalChatView: View {
                     .overlay(Circle().strokeBorder(palette.canvas, lineWidth: 1.5))
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: "cmux Personal").font(PersonalChatTypography.body(12, weight: .medium))
+                Text(verbatim: "CheatCode").font(PersonalChatTypography.body(12, weight: .medium))
                 if model.connected {
                     Text(String(localized: "personal.connected", defaultValue: "Connected", bundle: PersonalChatStrings.bundle))
                 } else {
@@ -198,7 +243,7 @@ struct PersonalChatView: View {
         HStack(spacing: 10) {
             if !sidebarVisible { sidebarToggle }
             VStack(alignment: .leading, spacing: 2) {
-                Text(model.project?.name ?? "cmux Personal").font(PersonalChatTypography.body(12.5, weight: .medium)).lineLimit(1)
+                Text(model.project?.name ?? "CheatCode").font(PersonalChatTypography.body(12.5, weight: .medium)).lineLimit(1)
                 if let path = model.project?.path {
                     Text(path).font(PersonalChatTypography.body(10)).foregroundStyle(palette.muted).lineLimit(1).truncationMode(.middle)
                         .textSelection(.enabled).help(path)

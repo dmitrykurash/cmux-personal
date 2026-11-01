@@ -5,7 +5,7 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 dest="${1:?Pass an output directory}"
 mkdir -p "$dest"
 dest="$(cd "$dest" && pwd)"
-app="$dest/cmux Personal Preview.app"
+app="$dest/CheatCode.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 swiftc -O -swift-version 6 -target "$(uname -m)-apple-macosx14.0" \
   "$root"/Sources/PersonalChat/*.swift "$root/personal/PreviewMain.swift" \
@@ -47,10 +47,11 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIconFile</key><string>PersonalAppIcon</string>
 <key>CFBundleExecutable</key><string>PersonalChat</string>
 <key>CFBundleIdentifier</key><string>com.cmuxterm.app.debug.personal-preview</string>
-<key>CFBundleName</key><string>cmux Personal Preview</string>
+<key>CFBundleName</key><string>CheatCode</string>
+<key>CFBundleDisplayName</key><string>CheatCode</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.3.1</string>
-<key>CFBundleVersion</key><string>4</string>
+<key>CFBundleShortVersionString</key><string>0.4.0</string>
+<key>CFBundleVersion</key><string>5</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
@@ -59,5 +60,5 @@ if [[ -n "${CMUX_PERSONAL_PREVIEW_BUNDLE_ID:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $CMUX_PERSONAL_PREVIEW_BUNDLE_ID" "$app/Contents/Info.plist"
 fi
 codesign --force --sign - "$app"
-ditto -c -k --sequesterRsrc --keepParent "$app" "$dest/cmux-personal-preview.zip"
+ditto -c -k --sequesterRsrc --keepParent "$app" "$dest/CheatCode-macos.zip"
 echo "Preview built in $dest"

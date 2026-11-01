@@ -886,7 +886,7 @@ struct cmuxApp: App {
 
             // New tab commands
             CommandGroup(replacing: .newItem) {
-                Button(String(localized: "personal.menu", defaultValue: "Personal Claude Chat…")) {
+                Button(String(localized: "personal.menu", defaultValue: "CheatCode…", bundle: PersonalChatStrings.bundle)) {
                     if personalChatWindowController == nil {
                         personalChatWindowController = PersonalChatWindowController { command in
                             _ = activeTabManager.addWorkspaceIfActive(

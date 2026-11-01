@@ -17,8 +17,24 @@ actor PersonalChatRepository {
     }
 
     func save(_ value: Configuration) throws {
+        try write(JSONEncoder().encode(value), to: file)
+    }
+
+    // Separate from connection settings so an older preview cannot erase the archive.
+    private var archiveFile: URL { file.deletingPathExtension().appendingPathExtension("archive.json") }
+
+    func loadArchive() throws -> [String: Set<String>] {
+        guard FileManager.default.fileExists(atPath: archiveFile.path) else { return [:] }
+        return try JSONDecoder().decode([String: Set<String>].self, from: Data(contentsOf: archiveFile))
+    }
+
+    func saveArchive(_ value: [String: Set<String>]) throws {
+        try write(JSONEncoder().encode(value), to: archiveFile)
+    }
+
+    private func write(_ data: Data, to destination: URL) throws {
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try JSONEncoder().encode(value).write(to: file, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        try data.write(to: destination, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
     }
 }

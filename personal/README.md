@@ -1,9 +1,8 @@
-# cmux Personal — interactive SSH chat MVP
+# CheatCode — interactive SSH chat MVP
 
 This is an additive personal modification of cmux, based on upstream commit
 `c5fd30b26e1ab19b4e2d31e38bf2f92b9f2f5edd` (inspected 2026-11-01).
-Open **File → Personal Claude Chat…** in the full fork. The separate **cmux
-Personal Preview** executable builds the same SwiftUI chat with Command Line
+Open **File → CheatCode…** in the full fork. The separate **CheatCode** executable builds the same SwiftUI chat with Command Line
 Tools and uses Terminal.app for the terminal button. It is a verification and
 early-use build, not a replacement for the full Ghostty-based cmux application.
 
@@ -41,6 +40,19 @@ IME composition stays with the input method. Attachments can be removed before
 sending. Subtle hover, focus, button and sidebar animations respect the macOS
 Reduce Motion preference. The engine label says Claude Code rather than offering
 a model picker that the bridge cannot control.
+
+## Chat archive
+
+Version 0.4 names the native app **CheatCode**, keeping the original bundle ID,
+connection settings and project history. Use a chat’s **⋯ → Archive chat**
+(or right-click it) to move it into that project’s **Archive** section.
+Open Archive and use **⋯ → Restore chat** to put it back. Search includes
+archived conversations. Archiving the open chat preserves its unsent draft.
+
+Archive membership is private to this Mac and persists in `config.archive.json`
+beside the existing configuration. It does not delete transcripts or files,
+stop running CLI sessions, or alter Claude permissions. The separate file also
+prevents older previews from erasing archive membership when saving settings.
 
 ## Daily launch and shutdown
 

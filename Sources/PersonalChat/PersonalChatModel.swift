@@ -7,6 +7,7 @@ final class PersonalChatModel {
     var projects: [PersonalChatProject] = []
     var projectID: UUID?
     var sessions: [PersonalChatSession] = []
+    private(set) var archivedSessionIDs: [String: Set<String>] = [:]
     var selectedID: String?
     var messages: [PersonalChatMessage] = []
     var draft = ""
@@ -30,7 +31,29 @@ final class PersonalChatModel {
     }
 
     var project: PersonalChatProject? { projects.first { $0.id == projectID } }
+    var activeSessions: [PersonalChatSession] { sessions.filter { !isArchived($0.id) } }
+    var archivedSessions: [PersonalChatSession] { sessions.filter { isArchived($0.id) } }
     var canSend: Bool { connected && !busy && phase == "ready" && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) }
+
+    func isArchived(_ id: String) -> Bool {
+        guard let projectID else { return false }
+        return archivedSessionIDs[projectID.uuidString]?.contains(id) == true
+    }
+
+    func setArchived(_ id: String, archived: Bool, inProject idOfProject: UUID) async {
+        guard !busy, projectID == idOfProject, sessions.contains(where: { $0.id == id }) else { return }
+        busy = true
+        defer { busy = false }
+        var updated = archivedSessionIDs
+        if archived { updated[idOfProject.uuidString, default: []].insert(id) }
+        else { updated[idOfProject.uuidString]?.remove(id) }
+        do {
+            try await repository.saveArchive(updated)
+            archivedSessionIDs = updated
+            // Keep the current conversation and unsent draft intact. Archiving only
+            // organizes the sidebar; it never stops a CLI or edits server history.
+        } catch { self.error = error.localizedDescription }
+    }
 
     func load() async {
         if loaded {
@@ -44,6 +67,7 @@ final class PersonalChatModel {
         loaded = true
         do {
             let config = try await repository.load()
+            archivedSessionIDs = try await repository.loadArchive()
             connection = config.connection
             projects = config.projects
             projectID = projects.contains { $0.id == config.selectedProjectID } ? config.selectedProjectID : projects.first?.id

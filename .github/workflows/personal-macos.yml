@@ -1,4 +1,4 @@
-name: Personal macOS MVP
+name: CheatCode macOS MVP
 
 on:
   workflow_dispatch:
@@ -46,8 +46,8 @@ jobs:
       - run: bash personal/scripts/build-preview.sh artifact
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: cmux-personal-preview-arm64
-          path: artifact/cmux-personal-preview.zip
+          name: CheatCode-macos-arm64
+          path: artifact/CheatCode-macos.zip
           retention-days: 14
 
   full-cmux:

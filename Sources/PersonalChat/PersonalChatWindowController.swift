@@ -14,7 +14,7 @@ final class PersonalChatWindowController: NSWindowController {
         model = PersonalChatModel(service: PersonalChatService(source: source), repository: PersonalChatRepository(file: file))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: 860),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "cmux Personal"
+        window.title = "CheatCode"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false

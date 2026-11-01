@@ -17,7 +17,7 @@ struct PersonalChatPreview: App {
     }
 
     var body: some Scene {
-        WindowGroup("cmux Personal") {
+        WindowGroup("CheatCode") {
             PersonalChatView(model: model, openTerminal: Self.openTerminal)
         }
         .defaultSize(width: 1320, height: 860)
