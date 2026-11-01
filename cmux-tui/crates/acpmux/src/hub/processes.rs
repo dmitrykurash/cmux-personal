@@ -117,10 +117,6 @@ mod process_index_tests;
 #[path = "processes_page_tests.rs"]
 mod process_page_tests;
 
-#[cfg(test)]
-#[path = "processes_page_tests.rs"]
-mod process_page_tests;
-
 impl ProcessTable {
     /// All appends go here, including records replayed from a logged process update.
     fn insert(&mut self, process: Process) -> usize {
