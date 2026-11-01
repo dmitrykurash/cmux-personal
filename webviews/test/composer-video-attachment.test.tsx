@@ -361,6 +361,55 @@ try {
     await act(async () => calls[0]!.answer(INFO));
     expect(host.querySelector(".acpmux-attachment-video img")?.getAttribute("src")).toBe(POSTER);
   });
+
+  test("the answer's probes pick the frames: the host decodes them, they replace the four, and the send waits", async () => {
+    // Black, then white from 20 s: one cut, which gets a frame of its own, marked.
+    const cells = (gray: number) => btoa(String.fromCharCode(...new Uint8Array(24 * 24).fill(gray)));
+    const probes = Array.from({ length: 48 }, (_, index) => {
+      const atMs = Math.round(((index + 0.5) * INFO.durationMs) / 48);
+      return { atMs, cells: cells(atMs < 20_000 ? 0 : 255) };
+    });
+    await render([video()]);
+    await act(async () => calls[0]!.answer({ ...INFO, probes }));
+    // The poster shows at once; the send still waits for the picked frames.
+    expect(host.querySelector(".acpmux-attachment-video img")?.getAttribute("src")).toBe(POSTER);
+    expect(host.querySelector(".acpmux-attachment-pending")).toBeNull();
+    expect(state?.reading).toBe(1);
+    const asked = calls[1]!;
+    expect(asked.method).toBe("video.frames");
+    expect(asked.params.src).toBe(PATH);
+    const times = asked.params.times as number[];
+    expect(times).toHaveLength(16);
+    const cut = probes.find((probe) => probe.atMs >= 20_000)!.atMs;
+    expect(times).toContain(cut);
+    await act(async () => asked.answer({ frames: times.map((atMs) => ({ atMs, data: "/9j/BB==" })) }));
+    expect(state?.reading).toBe(0);
+    const frames = state?.attachments[0]?.video?.frames ?? [];
+    expect(state?.attachments[0]?.video?.picked).toBe(true);
+    expect(frames.map((frame) => frame.atMs)).toEqual(times);
+    expect(frames.filter((frame) => frame.scene).map((frame) => frame.atMs)).toEqual([cut]);
+    // Asked once.
+    expect(calls.filter((call) => call.method === "video.frames")).toHaveLength(1);
+  });
+
+  test("an older host that has no video.frames keeps the answer's four frames, and the send goes", async () => {
+    const still = btoa("\u0000\u0000\u0000\u0000");
+    const probes = [0, 1, 2].map((index) => ({ atMs: 1000 + index * 1000, cells: still }));
+    await render([video()]);
+    await act(async () => calls[0]!.answer({ ...INFO, probes }));
+    expect(state?.reading).toBe(1);
+    await act(async () => calls[1]!.fail(new Error("unknown method video.frames")));
+    expect(state?.reading).toBe(0);
+    expect(state?.attachments[0]?.video?.frames).toEqual(INFO.frames);
+    expect(state?.attachments[0]?.video?.picked).toBeUndefined();
+  });
+
+  test("an answer without probes asks for no picked frames", async () => {
+    await render([video()]);
+    await act(async () => calls[0]!.answer(INFO));
+    expect(state?.reading).toBe(0);
+    expect(calls.map((call) => call.method)).toEqual(["video.info"]);
+  });
 } finally {
   afterAll(() => {
     setChipHost(undefined);

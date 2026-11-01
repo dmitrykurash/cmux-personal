@@ -48,6 +48,8 @@ public nonisolated enum AgentPaneReplyRequest: Equatable, Sendable {
     case loadImage(String, auto: Bool)
     case loadMedia(String)
     case videoInfo(String)
+    /// `video.frames {src, times}`: the frames at the page's picked times, in milliseconds.
+    case videoFrames(String, times: [Int])
     case quickLookVideo(String)
     case listBrowsers
     case openIn(url: URL, browserId: String)
@@ -66,7 +68,7 @@ public nonisolated enum AgentPaneReplyRequest: Equatable, Sendable {
     public static let methods: Set<String> = [
         "link.inspect", "link.openPath", "image.load", "media.load", "browser.list", "browser.openIn", "image.reveal",
         "image.openInPane", "image.copy", "image.save", "image.quickLook", "image.drag", "file.drag", "pr.inspect",
-        "video.info", "video.quickLook", "link.preview", "composer.copy",
+        "video.info", "video.frames", "video.quickLook", "link.preview", "composer.copy",
     ]
 
     /// Each method's exact param keys (all required; `link.inspect` takes either list, and
@@ -77,6 +79,7 @@ public nonisolated enum AgentPaneReplyRequest: Equatable, Sendable {
         "image.load": ["src", "auto"],
         "media.load": ["src"],
         "video.info": ["src"],
+        "video.frames": ["src", "times"],
         "video.quickLook": ["src"],
         "browser.list": [],
         "browser.openIn": ["url", "browserId"],
@@ -121,7 +124,7 @@ public nonisolated enum AgentPaneReplyRequest: Equatable, Sendable {
     /// Whether the request only reads (it does not count as the page being touched).
     var isPassive: Bool {
         switch self {
-        case .inspect, .listBrowsers, .loadImage, .loadMedia, .videoInfo, .inspectPullRequest, .previewPath: true
+        case .inspect, .listBrowsers, .loadImage, .loadMedia, .videoInfo, .videoFrames, .inspectPullRequest, .previewPath: true
         case .openPath, .openIn, .revealImage, .openImageInPane, .copyImage, .saveImage, .quickLookImage, .quickLookVideo, .dragImage,
              .dragFile, .copyComposer: false
         }
@@ -161,6 +164,17 @@ public nonisolated enum AgentPaneReplyRequest: Equatable, Sendable {
         case "media.load":
             guard let src = text("src", Self.maximumURL) else { return nil }
             self = .loadMedia(src)
+        case "video.frames":
+            // 1 to AgentPaneVideoInfo.maximumPicked whole milliseconds, each within a day.
+            guard let src = text("src", AgentPaneReplyPaths.maximumLength), let raw = params["times"] as? [Any],
+                  (1...AgentPaneVideoInfo.maximumPicked).contains(raw.count) else { return nil }
+            var times: [Int] = []
+            for value in raw {
+                guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+                      number.doubleValue.rounded() == number.doubleValue, (0...86_400_000).contains(number.doubleValue) else { return nil }
+                times.append(number.intValue)
+            }
+            self = .videoFrames(src, times: times)
         case "video.info", "video.quickLook":
             guard let src = text("src", AgentPaneReplyPaths.maximumLength) else { return nil }
             self = method == "video.info" ? .videoInfo(src) : .quickLookVideo(src)
