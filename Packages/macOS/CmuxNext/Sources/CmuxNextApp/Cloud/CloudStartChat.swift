@@ -118,6 +118,14 @@ struct CloudStartChat {
             // Timed out or didn't launch: Retry copies again on this machine, into a new folder.
             throw CloudMove.Failure(message: CloudMoveStrings.syncFailed(name, CloudStrings.errorText(error)), retry: again)
         }
+        report(.init(name: "folder", folder: folderName, machine: name, size: size,
+                     cloneState: copy.0.seedState, clonePhase: copy.0.seedPhase,
+                     cloneStartedAt: copy.0.seedStartedAt, cloneFinishedAt: copy.0.seedFinishedAt,
+                     cloneReceivedBytes: copy.0.seedReceivedBytes, cloneObjects: copy.0.seedObjects,
+                     cloneTotalObjects: copy.0.seedTotalObjects, setupStatus: copy.0.environmentStatus,
+                     setupLogTail: copy.0.environmentLogTail, machineStartedAt: copy.0.machineStartedAt,
+                     machineFinishedAt: copy.0.machineFinishedAt, harnessStartedAt: copy.0.harnessStartedAt,
+                     harnessFinishedAt: copy.0.harnessFinishedAt))
         guard copy.0.ok else { throw CloudMove.failure(syncing: copy.0, machine: name, retry: again) }
         let remoteChat = copy.1.chat
         // The copy may take long: a chat whose account changed meanwhile opens nowhere, and this
@@ -126,7 +134,8 @@ struct CloudStartChat {
         _ = await loginPassed
         // The login may have waited on a confirm and a sign-in: check the account again after it.
         try Self.checkAccount(account, now: services.cloud.account, listCurrent: services.cloud.hasLoadedCurrentMachines)
-        report(.init(name: "opening", folder: folderName, machine: name, size: size))
+        report(.init(name: "opening", folder: folderName, machine: name, size: size,
+                     harnessStartedAt: copy.0.harnessStartedAt, harnessFinishedAt: copy.0.harnessFinishedAt))
         return try await open(start, tab: tab, on: machine, cwd: remoteChat, tabKey: plan.tabKey)
     }
 
