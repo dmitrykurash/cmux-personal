@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Build the real native chat UI with Command Line Tools, without Ghostty/Xcode.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+dest="${1:?Pass an output directory}"
+mkdir -p "$dest"
+dest="$(cd "$dest" && pwd)"
+app="$dest/cmux Personal Preview.app"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+swiftc -O -swift-version 6 -target "$(uname -m)-apple-macosx14.0" \
+  "$root"/Sources/PersonalChat/*.swift "$root/personal/PreviewMain.swift" \
+  -o "$app/Contents/MacOS/PersonalChat"
+cp "$root/personal/bridge.py" "$app/Contents/Resources/personal-bridge.py"
+python3 - "$root/Resources/Localizable.xcstrings" "$app/Contents/Resources" <<'PY'
+import json
+from pathlib import Path
+import sys
+catalog = json.loads(Path(sys.argv[1]).read_text())["strings"]
+locales = {}
+for key, entry in catalog.items():
+    if not key.startswith("personal."):
+        continue
+    for locale, translation in entry.get("localizations", {}).items():
+        value = translation.get("stringUnit", {}).get("value")
+        if value is not None:
+            locales.setdefault(locale, []).append(json.dumps(key, ensure_ascii=False) + " = " + json.dumps(value, ensure_ascii=False) + ";")
+for locale, lines in locales.items():
+    folder = Path(sys.argv[2]) / (locale + ".lproj")
+    folder.mkdir(exist_ok=True)
+    (folder / "Localizable.strings").write_text("\n".join(lines) + "\n")
+PY
+cat > "$app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>PersonalChat</string>
+<key>CFBundleIdentifier</key><string>com.cmuxterm.app.debug.personal-preview</string>
+<key>CFBundleName</key><string>cmux Personal Preview</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>NSHighResolutionCapable</key><true/>
+</dict></plist>
+PLIST
+codesign --force --sign - "$app"
+ditto -c -k --sequesterRsrc --keepParent "$app" "$dest/cmux-personal-preview.zip"
+echo "Preview built in $dest"

@@ -43,6 +43,7 @@ struct cmuxApp: App {
     @AppStorage(ChiefCatalogSection().enabled.userDefaultsKey)
     private var chiefEnabled = ChiefCatalogSection().enabled.defaultValue
     @State private var aboutWindowController: AboutWindowController?
+    @State private var personalChatWindowController: PersonalChatWindowController?
     @State private var browserFocusModeMenuRevision = 0
     @State private var browserAvailabilityMenuRevision = 0
     @State var historyMenuCoordinator: HistoryMenuCoordinator
@@ -885,6 +886,22 @@ struct cmuxApp: App {
 
             // New tab commands
             CommandGroup(replacing: .newItem) {
+                Button(String(localized: "personal.menu", defaultValue: "Personal Claude Chat…")) {
+                    if personalChatWindowController == nil {
+                        personalChatWindowController = PersonalChatWindowController { command in
+                            _ = activeTabManager.addWorkspaceIfActive(
+                                title: "Claude · SSH",
+                                initialTerminalCommand: command,
+                                initialTerminalIsRemote: true,
+                                inheritWorkingDirectory: false
+                            )
+                            if let windowID = appDelegate.windowId(for: activeTabManager) {
+                                _ = appDelegate.focusMainWindow(windowId: windowID)
+                            }
+                        }
+                    }
+                    personalChatWindowController?.showWindow(nil)
+                }
                 splitCommandButton(title: String(localized: "menu.file.newWindow", defaultValue: "New Window"), shortcut: menuShortcut(for: .newWindow)) {
                     appDelegate.openNewMainWindow(nil)
                 }

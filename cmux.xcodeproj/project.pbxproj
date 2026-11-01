@@ -2951,6 +2951,21 @@
 		10160EE83CD45605F0AC660F /* PendingTeamCreate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 898CD27F22E66409D1EEE890 /* PendingTeamCreate.swift */; };
 		9923B0049923B0049923B004 /* PendingTerminalStartupRestore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9923B0029923B0029923B002 /* PendingTerminalStartupRestore.swift */; };
 		9923B0039923B0039923B003 /* PendingTerminalStartupRestoreChatBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9923B0019923B0019923B001 /* PendingTerminalStartupRestoreChatBinding.swift */; };
+		1849CCF88B34A899D622BD1B /* PersonalChatConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F769B41DAC5D523A63AF1F5A /* PersonalChatConnection.swift */; };
+		A81D7DEFD83E3D392B727490 /* PersonalChatError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CEF01640AD1A26F95CC9884 /* PersonalChatError.swift */; };
+		CD78993919F3AFBA1D6B0341 /* PersonalChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A2191D3B11711C24EEFFFC2 /* PersonalChatMessage.swift */; };
+		8FB5A3EEF7BBF048FCC6D698 /* PersonalChatMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE51D945A75061447B15601D /* PersonalChatMessageView.swift */; };
+		4D1B13D06B97CD45C6E9E828 /* PersonalChatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48439FC5C0FC09E347BEFA19 /* PersonalChatModel.swift */; };
+		C063D0989CE25A47D9E37831 /* PersonalChatProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = C874F684FA988CF1F3953662 /* PersonalChatProject.swift */; };
+		0440D0B4C8F04D68823BD14A /* PersonalChatReply.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DEE12DF5FDB2A042F2C135B /* PersonalChatReply.swift */; };
+		4C08D41F9EDA3B11AF510A03 /* PersonalChatRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B790D62D35931B63EB97AA3 /* PersonalChatRepository.swift */; };
+		D584D40A9A3F3A664D45105E /* PersonalChatRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B93D6ACAD88E1CAE92B26A /* PersonalChatRequest.swift */; };
+		ED282EDAD3BB726A0777E59B /* PersonalChatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D44BF50797CC694957F865B /* PersonalChatService.swift */; };
+		DCB67AA3D344029783B9A1A4 /* PersonalChatServing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F21704C9F2FCF8FCA87729BE /* PersonalChatServing.swift */; };
+		166C9A81062CC5E3A77FD57F /* PersonalChatSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2720BF712EF99541E53F7D7A /* PersonalChatSession.swift */; };
+		0948D4C0361C8FA5D6A41789 /* PersonalChatSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47C96DFBC174FAA2233C81E2 /* PersonalChatSettingsView.swift */; };
+		266B7CD0968FEDC324C058B9 /* PersonalChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCA2D8A55361EF560B9023E9 /* PersonalChatView.swift */; };
+		0F97A876371BD1DA924F2FE4 /* PersonalChatWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576C67D74EAC82F39E517122 /* PersonalChatWindowController.swift */; };
 		D1F0A00400000000000000D1 /* PhoneForwardingMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0A00400000000000000D2 /* PhoneForwardingMode.swift */; };
 		D1F0A00100000000000000A1 /* PhonePushClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0A00100000000000000A2 /* PhonePushClient.swift */; };
 		D1F0A0050000000000000001 /* PhonePushIdentityPrewarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0A0050000000000000002 /* PhonePushIdentityPrewarm.swift */; };
@@ -7635,6 +7650,21 @@
 		898CD27F22E66409D1EEE890 /* PendingTeamCreate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingTeamCreate.swift; sourceTree = "<group>"; };
 		9923B0029923B0029923B002 /* PendingTerminalStartupRestore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingTerminalStartupRestore.swift; sourceTree = "<group>"; };
 		9923B0019923B0019923B001 /* PendingTerminalStartupRestoreChatBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingTerminalStartupRestoreChatBinding.swift; sourceTree = "<group>"; };
+		F769B41DAC5D523A63AF1F5A /* PersonalChatConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatConnection.swift; sourceTree = "<group>"; };
+		6CEF01640AD1A26F95CC9884 /* PersonalChatError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatError.swift; sourceTree = "<group>"; };
+		9A2191D3B11711C24EEFFFC2 /* PersonalChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatMessage.swift; sourceTree = "<group>"; };
+		BE51D945A75061447B15601D /* PersonalChatMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatMessageView.swift; sourceTree = "<group>"; };
+		48439FC5C0FC09E347BEFA19 /* PersonalChatModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatModel.swift; sourceTree = "<group>"; };
+		C874F684FA988CF1F3953662 /* PersonalChatProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatProject.swift; sourceTree = "<group>"; };
+		9DEE12DF5FDB2A042F2C135B /* PersonalChatReply.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatReply.swift; sourceTree = "<group>"; };
+		7B790D62D35931B63EB97AA3 /* PersonalChatRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatRepository.swift; sourceTree = "<group>"; };
+		27B93D6ACAD88E1CAE92B26A /* PersonalChatRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatRequest.swift; sourceTree = "<group>"; };
+		1D44BF50797CC694957F865B /* PersonalChatService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatService.swift; sourceTree = "<group>"; };
+		F21704C9F2FCF8FCA87729BE /* PersonalChatServing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatServing.swift; sourceTree = "<group>"; };
+		2720BF712EF99541E53F7D7A /* PersonalChatSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatSession.swift; sourceTree = "<group>"; };
+		47C96DFBC174FAA2233C81E2 /* PersonalChatSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatSettingsView.swift; sourceTree = "<group>"; };
+		CCA2D8A55361EF560B9023E9 /* PersonalChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatView.swift; sourceTree = "<group>"; };
+		576C67D74EAC82F39E517122 /* PersonalChatWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatWindowController.swift; sourceTree = "<group>"; };
 		D1F0A00400000000000000D2 /* PhoneForwardingMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneForwardingMode.swift; sourceTree = "<group>"; };
 		D1F0A00100000000000000A2 /* PhonePushClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PhonePushClient.swift; sourceTree = "<group>"; };
 		D1F0A0050000000000000002 /* PhonePushIdentityPrewarm.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PhonePushIdentityPrewarm.swift; sourceTree = "<group>"; };
@@ -12673,6 +12703,21 @@
 				9EEA4A95E38F9F819B101793 /* Workspace+SharedLiveAgentIndex.swift */,
 				C2452EDA6ED2355F908EE912 /* AppDelegate+KiroAgentMessages.swift */,
 				D4D9700C7689786CCDB82CAE /* TerminalController+AgentMessageClaim.swift */,
+				F769B41DAC5D523A63AF1F5A /* PersonalChatConnection.swift */,
+				6CEF01640AD1A26F95CC9884 /* PersonalChatError.swift */,
+				9A2191D3B11711C24EEFFFC2 /* PersonalChatMessage.swift */,
+				BE51D945A75061447B15601D /* PersonalChatMessageView.swift */,
+				48439FC5C0FC09E347BEFA19 /* PersonalChatModel.swift */,
+				C874F684FA988CF1F3953662 /* PersonalChatProject.swift */,
+				9DEE12DF5FDB2A042F2C135B /* PersonalChatReply.swift */,
+				7B790D62D35931B63EB97AA3 /* PersonalChatRepository.swift */,
+				27B93D6ACAD88E1CAE92B26A /* PersonalChatRequest.swift */,
+				1D44BF50797CC694957F865B /* PersonalChatService.swift */,
+				F21704C9F2FCF8FCA87729BE /* PersonalChatServing.swift */,
+				2720BF712EF99541E53F7D7A /* PersonalChatSession.swift */,
+				47C96DFBC174FAA2233C81E2 /* PersonalChatSettingsView.swift */,
+				CCA2D8A55361EF560B9023E9 /* PersonalChatView.swift */,
+				576C67D74EAC82F39E517122 /* PersonalChatWindowController.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -16694,6 +16739,21 @@
 				10160EE83CD45605F0AC660F /* PendingTeamCreate.swift in Sources */,
 				9923B0049923B0049923B004 /* PendingTerminalStartupRestore.swift in Sources */,
 				9923B0039923B0039923B003 /* PendingTerminalStartupRestoreChatBinding.swift in Sources */,
+				1849CCF88B34A899D622BD1B /* PersonalChatConnection.swift in Sources */,
+				A81D7DEFD83E3D392B727490 /* PersonalChatError.swift in Sources */,
+				CD78993919F3AFBA1D6B0341 /* PersonalChatMessage.swift in Sources */,
+				8FB5A3EEF7BBF048FCC6D698 /* PersonalChatMessageView.swift in Sources */,
+				4D1B13D06B97CD45C6E9E828 /* PersonalChatModel.swift in Sources */,
+				C063D0989CE25A47D9E37831 /* PersonalChatProject.swift in Sources */,
+				0440D0B4C8F04D68823BD14A /* PersonalChatReply.swift in Sources */,
+				4C08D41F9EDA3B11AF510A03 /* PersonalChatRepository.swift in Sources */,
+				D584D40A9A3F3A664D45105E /* PersonalChatRequest.swift in Sources */,
+				ED282EDAD3BB726A0777E59B /* PersonalChatService.swift in Sources */,
+				DCB67AA3D344029783B9A1A4 /* PersonalChatServing.swift in Sources */,
+				166C9A81062CC5E3A77FD57F /* PersonalChatSession.swift in Sources */,
+				0948D4C0361C8FA5D6A41789 /* PersonalChatSettingsView.swift in Sources */,
+				266B7CD0968FEDC324C058B9 /* PersonalChatView.swift in Sources */,
+				0F97A876371BD1DA924F2FE4 /* PersonalChatWindowController.swift in Sources */,
 				D1F0A00400000000000000D1 /* PhoneForwardingMode.swift in Sources */,
 				D1F0A00100000000000000A1 /* PhonePushClient.swift in Sources */,
 				D1F0A0050000000000000001 /* PhonePushIdentityPrewarm.swift in Sources */,
