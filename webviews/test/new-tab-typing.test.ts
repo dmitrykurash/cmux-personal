@@ -58,9 +58,27 @@ await requireBrowserLane("new-tab-typing.test.ts", async () => {
       await page.keyboard.press("Enter");
       expect(await page.evaluate(() => window.newTabShellCommands)).toEqual([`${command} more`]);
       expect(await editor.locator("em, strong, code, a").count()).toBe(0);
+      const probe = async (label: string) =>
+        console.log(
+          "PROBE " + label + " " +
+            JSON.stringify(
+              await page.evaluate(() => ({
+                active: (document.activeElement as HTMLElement | null)?.className ?? null,
+                shell: document.querySelector(".nt-screen")?.hasAttribute("data-shell"),
+                glyph: !!document.querySelector(".nt-shell-glyph"),
+                sel: String(document.getSelection()),
+                text: document.querySelector(".nt-field .ProseMirror")?.textContent,
+              })),
+            ),
+        );
+      await probe("after-enter");
       await page.keyboard.press("Escape");
+      await probe("after-escape");
       await page.keyboard.press("ControlOrMeta+a");
-      await page.keyboard.type("**normal prompt**");
+      await probe("after-mod-a");
+      await page.keyboard.type("*");
+      await probe("after-star");
+      await page.keyboard.type("*normal prompt**");
       expect(await editor.textContent()).toBe("**normal prompt**");
       expect(await editor.locator("em, strong, code, a").count()).toBe(0);
     } finally {
