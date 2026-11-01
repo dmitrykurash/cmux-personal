@@ -11,4 +11,5 @@ struct PersonalChatRequest: Encodable, Sendable {
     var mode: String? = nil
     var repository: String? = nil
     var source: String? = nil
+    var confirmation: String? = nil
 }

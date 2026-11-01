@@ -5,10 +5,16 @@ private actor InteractionService: PersonalChatServing {
     private var sendWaiter: CheckedContinuation<Void, Never>?
     private var sending = false
     var sentTexts: [String] = []
+    var operations: [String] = []
+    let failSend: Bool
+    init(failSend: Bool = false) { self.failSend = failSend }
+    func setMessages(_ messages: [PersonalChatMessage]) { replyMessages = messages }
     var replyMessages: [PersonalChatMessage] = []
 
     func request(_ request: PersonalChatRequest, connection: PersonalChatConnection) async throws -> PersonalChatReply {
+        operations.append(request.op)
         if request.op == "send" {
+            if failSend { throw PersonalChatError.sshFailed }
             sentTexts.append(request.text ?? "")
             try await withCheckedThrowingContinuation { continuation in
                 sendGate = continuation
@@ -48,6 +54,51 @@ struct InteractionChecks {
         }
         await service.completeSend()
         await task.value
-        print("Immediate-send behavior passed.")
+        model.stopRefresh()
+        await model.refresh()
+        precondition(model.messages.count == 1 && model.activityText != nil, "A slow transcript must not erase the local echo or working state")
+        await service.setMessages([.init(id: "server-user", role: "user", text: "Show me immediately"), .init(id: "server-assistant", role: "assistant", text: "Here is the reply")])
+        await model.refresh()
+        precondition(model.messages.count == 2 && model.pendingSend == nil, "Acknowledgement must replace the echo without duplication")
+        precondition(model.revealingMessageIDs.contains("server-assistant"), "New assistant replies should be revealed")
+        model.finishReveal("server-assistant")
+        await model.refresh()
+        precondition(model.revealingMessageIDs.isEmpty, "Polling must not replay the reveal")
+
+        let failingService = InteractionService(failSend: true)
+        let failing = PersonalChatModel(service: failingService, repository: PersonalChatRepository(file: folder.appendingPathComponent("failure.json")))
+        failing.projects = [project]; failing.projectID = project.id; failing.selectedID = UUID().uuidString
+        failing.connected = true; failing.phase = "ready"; failing.draft = "Preserve on uncertain delivery"
+        await failing.send(); failing.stopRefresh()
+        precondition(failing.pendingSend?.state == "uncertain" && !failing.canSend, "Uncertain delivery must stay visible and must not auto-retry")
+        failing.restorePendingDraft()
+        precondition(failing.draft == "Preserve on uncertain delivery" && failing.pendingSend == nil)
+        let failedOperations = await failingService.operations
+        precondition(failedOperations.filter { $0 == "send" }.count == 1)
+
+        let sidebar = PersonalChatSidebarState()
+        precondition(!sidebar.archiveIsExpanded(project.id), "Archive starts closed")
+        sidebar.toggleArchive(project.id)
+        precondition(sidebar.archiveLimit(project.id) == 20)
+        sidebar.loadMore(project.id)
+        precondition(sidebar.archiveLimit(project.id) == 40)
+        sidebar.toggleArchive(project.id)
+        precondition(!sidebar.archiveIsExpanded(project.id) && sidebar.archiveLimit(project.id) == 20)
+        sidebar.toggleProject(project.id)
+        precondition(!sidebar.projectIsExpanded(project.id), "Collapse is independent from selected project")
+        await model.refresh()
+        precondition(!sidebar.projectIsExpanded(project.id) && !sidebar.archiveIsExpanded(project.id), "Refresh must not reopen folders")
+
+        try await model.performDeletion(.init(kind: .removeProject, project: project), planID: nil, confirmation: "")
+        let operations = await service.operations
+        precondition(!operations.contains(where: { $0.hasPrefix("deletion_") }), "Removing from app must never delete remotely")
+        precondition(model.projects.isEmpty && model.selectedID == nil)
+        do {
+            try await failing.performDeletion(.init(kind: .project, project: project), planID: UUID().uuidString, confirmation: "DELETE")
+            preconditionFailure("Permanent deletion requires the exact confirmation")
+        } catch {}
+        let guardedOperations = await failingService.operations
+        precondition(!guardedOperations.contains("deletion_commit"))
+        print("Interaction checks passed: immediate echo, reconciliation, uncertain delivery, reveal, collapse, pagination, local removal and deletion confirmation.")
     }
 }

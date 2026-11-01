@@ -183,11 +183,13 @@ def list_sessions(project):
                 found[meta["id"]] = {"id": meta["id"], "title": "New chat", "updated": path.stat().st_mtime}
         except (ValueError, KeyError, OSError):
             continue
-    return sorted(found.values(), key=lambda item: item["updated"], reverse=True)[:100]
+    return sorted(found.values(), key=lambda item: item["updated"], reverse=True)
 
 
 def start(sid, project, resume):
-    with session_lock(sid):
+    with lifecycle_lock(), session_lock(sid):
+        if (ROOT/"deleted"/sid).exists():
+            raise ValueError("This chat was permanently deleted")
         if alive(sid):
             if metadata(sid)["project"] != str(project):
                 raise ValueError("Session belongs to another project")
@@ -236,7 +238,7 @@ def send(sid, text):
         raise ValueError("Message is empty or too large")
     if any(ord(c) < 32 and c not in "\n\t" for c in text) or "\x7f" in text:
         raise ValueError("Terminal control characters are not allowed")
-    with session_lock(sid):
+    with lifecycle_lock(), session_lock(sid):
         metadata(sid)
         if not alive(sid) or read_status(sid) != "ready":
             raise ValueError("Claude is not ready. Resolve prompts in the terminal first.")
@@ -495,9 +497,161 @@ def project_worker(jid, lockfd):
         os.close(lockfd)
 
 
+@contextlib.contextmanager
+def lifecycle_lock():
+    private_dir(ROOT)
+    fd = os.open(ROOT/'lifecycle.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'w') as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        yield
+
+
+def deletion_project(value):
+    path = project_path(value)
+    home = Path.home().resolve()
+    # Never turn a project operation into deletion of the home, project container,
+    # credentials, app state or a path reached through a symlink.
+    if (str(path) != value or home not in path.parents or path == home/'projects'
+            or any(part.startswith('.') for part in path.relative_to(home).parts)
+            or path.stat().st_uid != os.getuid()):
+        raise ValueError('This folder cannot be deleted from the app. Remove it from the sidebar instead.')
+    for folder, directories, _ in os.walk(path, followlinks=False):
+        for name in directories:
+            child = Path(folder)/name
+            if not child.is_symlink() and os.path.ismount(child):
+                raise ValueError('Folder contains a mounted filesystem; deletion is not available.')
+    if not shutil.rmtree.avoids_symlink_attacks:
+        raise ValueError('Safe directory deletion is unavailable on this server.')
+    return path
+
+
+def deletion_inventory(project, recursive=False):
+    found = {}
+    def belongs(value):
+        cwd = Path(value).resolve()
+        return cwd == project or (recursive and project in cwd.parents)
+    for path in ROOT.glob('*.json'):
+        try:
+            sid = session_id(path.stem)
+        except ValueError:
+            continue
+        meta = json.loads(path.read_text())
+        if belongs(meta['project']):
+            found[sid] = {'project': meta['project'], 'transcripts': []}
+    for path in TRANSCRIPTS.glob('*/*.jsonl'):
+        try:
+            sid = session_id(path.stem)
+        except ValueError:
+            continue
+        for record in records(path):
+            if record.get('cwd'):
+                if belongs(record['cwd']):
+                    if sid in found and Path(found[sid]['project']).resolve() != Path(record['cwd']).resolve():
+                        raise ValueError('Session project does not match its transcript.')
+                    found.setdefault(sid, {'project': record['cwd'], 'transcripts': []})['transcripts'].append(path)
+                break
+    return found
+
+
+def deletion_item(path):
+    info = path.lstat()
+    if path.is_symlink() or path.resolve() != path or info.st_uid != os.getuid():
+        raise ValueError('Unsafe deletion target')
+    return {'path': str(path), 'device': info.st_dev, 'inode': info.st_ino, 'directory': path.is_dir()}
+
+
+def prepare_deletion(request):
+    mode = request.get('mode')
+    if mode not in ('chat', 'project'):
+        raise ValueError('Unknown deletion type')
+    with lifecycle_lock():
+        project = deletion_project(request['project']) if mode == 'project' else project_path(request['project'])
+        inventory = deletion_inventory(project, recursive=mode == 'project')
+        if mode == 'chat':
+            sid = session_id(request['id'])
+            if sid not in inventory:
+                raise ValueError('Chat does not belong to this project')
+            inventory = {sid: inventory[sid]}
+        items = []
+        for sid, entry in inventory.items():
+            meta_path = ROOT/(sid+'.json')
+            if meta_path.exists() and metadata(sid)['project'] != entry['project']:
+                raise ValueError('Session belongs to another project')
+            paths = [ROOT/(sid+suffix) for suffix in ('.json', '.settings.json', '.status')]
+            paths += [ROOT/'attachments'/sid]
+            for path in entry['transcripts']:
+                if path.parent.is_symlink():
+                    raise ValueError('Unsafe transcript directory')
+                paths += [path, path.parent/sid]
+            for path in paths:
+                if path.exists() or path.is_symlink():
+                    items.append(deletion_item(path))
+        if mode == 'project':
+            items.append(deletion_item(project))
+        plan_id = str(uuid.uuid4())
+        plan = {'id': plan_id, 'mode': mode, 'project': str(project), 'sessions': sorted(inventory),
+                'items': items, 'phase': 'prepared', 'created': time.time()}
+        atomic_json(private_dir(ROOT/'deletions')/(plan_id+'.json'), plan)
+        return {'id': plan_id, 'path': str(project), 'count': len(inventory)}
+
+
+def commit_deletion(request):
+    if request.get('confirmation') != 'delete':
+        raise ValueError('Type delete to confirm permanent deletion')
+    plan_file = ROOT/'deletions'/(session_id(request['id'])+'.json')
+    with lifecycle_lock():
+        plan = json.loads(plan_file.read_text())
+        if plan['phase'] == 'done':
+            return {'phase': 'done'}  # Lost SSH replies can be retried safely.
+        if time.time() - plan['created'] > 900 and plan['phase'] == 'prepared':
+            raise ValueError('Deletion preview expired. Open it again.')
+        current = deletion_inventory(Path(plan['project']), recursive=plan['mode'] == 'project')
+        if plan['mode'] == 'project' and set(current) - set(plan['sessions']):
+            raise ValueError('Project chats changed. Review the deletion again.')
+        if plan['phase'] == 'prepared' and not set(plan['sessions']).issubset(current):
+            raise ValueError('Chat ownership changed. Review the deletion again.')
+        # Validate the entire plan before stopping any CLI or removing any data.
+        for item in plan['items']:
+            path = Path(item['path'])
+            if not path.exists() and not path.is_symlink():
+                continue
+            current = deletion_item(path)
+            if any(current[key] != item[key] for key in ('device', 'inode', 'directory')):
+                raise ValueError('A deletion target changed. Review the deletion again.')
+        if plan['mode'] == 'project' and Path(plan['project']).exists():
+            deletion_project(plan['project'])
+        plan['phase'] = 'deleting'
+        atomic_json(plan_file, plan)
+        for sid in plan['sessions']:
+            # Tombstones prevent late hooks and stale preview windows from
+            # recreating a deleted conversation's state.
+            (private_dir(ROOT/'deleted')/sid).touch(mode=0o600, exist_ok=True)
+            if alive(sid):
+                owner = Path(metadata(sid)['project']).resolve()
+                project = Path(plan['project'])
+                if owner != project and not (plan['mode'] == 'project' and project in owner.parents):
+                    raise ValueError('Session belongs to another project')
+                tmux('kill-session', '-t', target(sid))
+        for item in plan['items']:
+            path = Path(item['path'])
+            if not path.exists() and not path.is_symlink():
+                continue
+            if item['directory']:
+                shutil.rmtree(path)  # FD-based implementation, never follows symlinks.
+            else:
+                path.unlink()
+        plan['phase'] = 'done'
+        atomic_json(plan_file, plan)
+        return {'phase': 'done'}
+
+
 def dispatch(request):
     op = request["op"]
     private_dir(ROOT)
+    if op == "deletion_prepare":
+        return prepare_deletion(request)
+    if op == "deletion_commit":
+        return commit_deletion(request)
     if op == "folders":
         return folders(request.get("project"))
     if op == "project_prepare":
@@ -532,7 +686,8 @@ def dispatch(request):
             raise ValueError("Session belongs to another project")
         return {"messages": messages(transcript(sid, project)), "phase": read_status(sid) if live and managed else "offline", "live": live and managed}
     if op == "upload":
-        return upload(sid, request["name"], request["data"])
+        with lifecycle_lock():
+            return upload(sid, request["name"], request["data"])
     if op == "send":
         return send(sid, request["text"])
     if op == "interrupt":
@@ -544,6 +699,8 @@ def dispatch(request):
 
 
 def hook(sid, event):
+    if (ROOT/"deleted"/sid).exists():
+        return
     name = event.get("hook_event_name")
     phase = {"SessionStart": "ready", "UserPromptSubmit": "busy", "Stop": "ready",
              "PermissionRequest": "permission", "SessionEnd": "offline"}.get(name)

@@ -6,6 +6,7 @@ struct PersonalChatSessionRow: View {
     let archived: Bool
     let select: () -> Void
     let toggleArchive: () -> Void
+    let delete: () -> Void
     @Environment(\.colorScheme) private var scheme
 
     private var actionTitle: String {
@@ -22,20 +23,22 @@ struct PersonalChatSessionRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, 12).padding(.trailing, 4).frame(height: 32)
             }.buttonStyle(PersonalChatHoverStyle(radius: 9)).help(session.title)
-            Menu { archiveAction } label: {
-                Image(systemName: "ellipsis").font(.system(size: 12, weight: .medium)).frame(width: 24, height: 28)
-            }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .foregroundStyle(PersonalChatPalette(scheme: scheme).secondary)
-                .accessibilityLabel(String(localized: "personal.archive.actions", defaultValue: "Chat actions", bundle: PersonalChatStrings.bundle))
+            PersonalChatActionsMenu(label: String(localized: "personal.archive.actions", defaultValue: "Chat actions", bundle: PersonalChatStrings.bundle)) { actions }
                 .padding(.trailing, 4)
         }
         .background(selected ? PersonalChatPalette(scheme: scheme).selection : .clear, in: RoundedRectangle(cornerRadius: 9))
-        .contextMenu { archiveAction }
+        .contextMenu { actions }
     }
 
-    private var archiveAction: some View {
+    @ViewBuilder private var actions: some View {
         Button(action: toggleArchive) {
             Label(actionTitle, systemImage: archived ? "arrow.uturn.backward" : "archivebox")
+        }
+        if archived {
+            Divider()
+            Button(role: .destructive, action: delete) {
+                Label(String(localized: "personal.delete.chat", defaultValue: "Delete permanently", bundle: PersonalChatStrings.bundle), systemImage: "trash")
+            }
         }
     }
 }

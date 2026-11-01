@@ -9,7 +9,8 @@ struct PersonalChatView: View {
     @State private var sidebarVisible = true
     @State private var search = ""
     @State private var addingProject = false
-    @State private var expandedArchives: Set<UUID> = []
+    @State private var sidebarState = PersonalChatSidebarState()
+    @State private var deletionTarget: PersonalChatDeletionTarget?
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
     private var newChatLabel: String { String(localized: "personal.new", defaultValue: "New chat", bundle: PersonalChatStrings.bundle) }
     private var motion: Animation? { reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.3) }
@@ -42,6 +43,12 @@ struct PersonalChatView: View {
         .sheet(isPresented: $addingProject) {
             PersonalChatProjectSetupView(importer: model.makeProjectImporter(), addProject: model.addProject, openTerminal: openTerminal)
         }
+        .sheet(item: $deletionTarget) { target in
+            PersonalChatDeletionView(target: target, prepare: { try await model.prepareDeletion(target) }, commit: { planID, confirmation in
+                try await model.performDeletion(target, planID: planID, confirmation: confirmation)
+            })
+        }
+        .onChange(of: search) { sidebarState.resetPages() }
         .alert(String(localized: "personal.attention", defaultValue: "Needs attention", bundle: PersonalChatStrings.bundle), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button(String(localized: "personal.ok", defaultValue: "OK", bundle: PersonalChatStrings.bundle)) { model.error = nil }
         } message: { Text(model.error ?? "") }
@@ -76,7 +83,7 @@ struct PersonalChatView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(model.projects) { project in
                         projectRow(project)
-                        if model.projectID == project.id {
+                        if model.projectID == project.id && sidebarState.projectIsExpanded(project.id) {
                             ForEach(matching(model.activeSessions)) { session in
                                 sessionRow(session, projectID: project.id, archived: false).padding(.leading, 20)
                             }
@@ -99,18 +106,22 @@ struct PersonalChatView: View {
         } toggleArchive: {
             Task {
                 await model.setArchived(session.id, archived: !archived, inProject: projectID)
-                if model.isArchived(session.id) { withAnimation(motion) { _ = expandedArchives.insert(projectID) } }
+            }
+        } delete: {
+            if let project = model.projects.first(where: { $0.id == projectID }) {
+                deletionTarget = .init(kind: .chat, project: project, session: session)
             }
         }.disabled(model.busy)
     }
 
     private func archiveSection(projectID: UUID) -> some View {
-        let expanded = expandedArchives.contains(projectID) || !search.isEmpty
+        let expanded = sidebarState.archiveIsExpanded(projectID)
+        let sessions = matching(model.archivedSessions)
+        let limit = sidebarState.archiveLimit(projectID)
         return VStack(alignment: .leading, spacing: 3) {
             Button {
                 withAnimation(motion) {
-                    if expandedArchives.contains(projectID) { expandedArchives.remove(projectID) }
-                    else { expandedArchives.insert(projectID) }
+                    sidebarState.toggleArchive(projectID)
                 }
             } label: {
                 HStack(spacing: 8) {
@@ -127,27 +138,45 @@ struct PersonalChatView: View {
                         .font(PersonalChatTypography.body(11)).foregroundStyle(palette.muted)
                         .padding(.leading, 27).padding(.vertical, 6)
                 } else {
-                    ForEach(matching(model.archivedSessions)) { session in
+                    ForEach(Array(sessions.prefix(limit))) { session in
                         sessionRow(session, projectID: projectID, archived: true).padding(.leading, 12)
+                    }
+                    if sessions.count > limit {
+                        Button(String(localized: "personal.archive.more", defaultValue: "Load more", bundle: PersonalChatStrings.bundle)) { sidebarState.loadMore(projectID) }
+                            .buttonStyle(PersonalChatHoverStyle(radius: 7)).font(PersonalChatTypography.body(11.5))
+                            .foregroundStyle(palette.secondary).padding(.leading, 27).padding(.vertical, 5)
                     }
                 }
             }
         }.padding(.leading, 20)
-        .onChange(of: model.selectedID, initial: true) {
-            if let selectedID = model.selectedID, model.isArchived(selectedID) { expandedArchives.insert(projectID) }
-        }
     }
 
     private func projectRow(_ project: PersonalChatProject) -> some View {
-        Button { Task { await model.selectProject(project.id) } } label: {
-            HStack(spacing: 8) {
-                Image(systemName: model.projectID == project.id ? "chevron.down" : "chevron.right").font(.system(size: 8, weight: .semibold))
-                Image(systemName: "folder").font(.system(size: 13))
-                Text(project.name).font(PersonalChatTypography.body(12.5, weight: .medium)).lineLimit(1)
-                Spacer(minLength: 0)
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).frame(height: 32)
-        }.buttonStyle(PersonalChatHoverStyle(radius: 9)).disabled(model.busy).help(project.path)
+        HStack(spacing: 0) {
+            Button {
+                if model.projectID == project.id { withAnimation(motion) { sidebarState.toggleProject(project.id) } }
+                else {
+                    sidebarState.openProject(project.id)
+                    Task { await model.selectProject(project.id) }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: model.projectID == project.id && sidebarState.projectIsExpanded(project.id) ? "chevron.down" : "chevron.right").font(.system(size: 8, weight: .semibold))
+                    Image(systemName: "folder").font(.system(size: 13))
+                    Text(project.name).font(PersonalChatTypography.body(12.5, weight: .medium)).lineLimit(1)
+                    Spacer(minLength: 0)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).frame(height: 32)
+            }.buttonStyle(PersonalChatHoverStyle(radius: 9)).help(project.path)
+            PersonalChatActionsMenu(label: String(localized: "personal.delete.projectActions", defaultValue: "Project actions", bundle: PersonalChatStrings.bundle)) { projectActions(project) }.padding(.trailing, 4)
+        }.disabled(model.busy)
             .foregroundStyle(model.projectID == project.id ? palette.text : palette.secondary)
+            .contextMenu { projectActions(project) }
+    }
+
+    @ViewBuilder private func projectActions(_ project: PersonalChatProject) -> some View {
+        Button(String(localized: "personal.delete.remove", defaultValue: "Remove from app", bundle: PersonalChatStrings.bundle)) { deletionTarget = .init(kind: .removeProject, project: project) }
+        Divider()
+        Button(String(localized: "personal.delete.project", defaultValue: "Delete project from server…", bundle: PersonalChatStrings.bundle), role: .destructive) { deletionTarget = .init(kind: .project, project: project) }.disabled(!model.connected)
     }
 
     private func sectionLabel(_ title: String) -> some View {
@@ -264,13 +293,25 @@ struct PersonalChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 24) {
-                    ForEach(model.messages) { message in PersonalChatMessageView(message: message) }
+                    ForEach(model.messages) { message in
+                        PersonalChatMessageView(message: message, animate: model.revealingMessageIDs.contains(message.id)) { model.finishReveal(message.id) }
+                    }
+                    if let activity = model.activityText {
+                        HStack(spacing: 10) {
+                            if model.pendingSend?.state != "uncertain" { ProgressView().controlSize(.small) }
+                            Text(activity).font(PersonalChatTypography.body(12)).foregroundStyle(palette.secondary)
+                            if model.pendingSend?.state == "uncertain" {
+                                Button(String(localized: "personal.delivery.restore", defaultValue: "Restore draft", bundle: PersonalChatStrings.bundle)) { model.restorePendingDraft() }.buttonStyle(.plain)
+                            }
+                            Spacer(minLength: 0)
+                        }.padding(.horizontal, 4).padding(.vertical, 8)
+                    }
                     Color.clear.frame(height: 1).id("end")
                 }.frame(maxWidth: 760).padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 8)
                     .frame(maxWidth: .infinity)
             }
             .onAppear { proxy.scrollTo("end", anchor: .bottom) }
-            .onChange(of: model.messages.last?.id) {
+            .onChange(of: model.messages.last?.text) {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("end", anchor: .bottom) }
             }
         }

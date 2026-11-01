@@ -14,7 +14,7 @@ struct PersonalChatComposer: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            if model.selectedID != nil && model.phase != "ready" {
+            if model.selectedID != nil && model.phase != "ready" && (model.messages.isEmpty || model.phase != "busy") {
                 statusRow
             }
             VStack(alignment: .leading, spacing: 8) {

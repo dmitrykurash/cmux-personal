@@ -2,6 +2,8 @@ import SwiftUI
 
 struct PersonalChatMessageView: View {
     let message: PersonalChatMessage
+    var animate = false
+    var completed: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
 
@@ -23,7 +25,7 @@ struct PersonalChatMessageView: View {
     }
 
     private var messageText: some View {
-        Text((try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(message.text))
+        PersonalChatRevealText(text: message.text, animate: animate && message.role == "assistant", completed: completed)
             .font(PersonalChatTypography.body(15)).foregroundStyle(palette.text).textSelection(.enabled)
     }
 }

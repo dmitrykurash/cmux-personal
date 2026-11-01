@@ -14,10 +14,10 @@ actor PersonalChatService: PersonalChatServing {
         let input = try JSONEncoder().encode(request)
         let command = "python3 -c " + PersonalChatConnection.quote(source)
         let arguments = try connection.arguments(command: command)
-        return try await Self.run(arguments: arguments, input: input)
+        return try await Self.run(arguments: arguments, input: input, timeout: request.op == "deletion_commit" ? 300_000_000_000 : 45_000_000_000)
     }
 
-    private static func run(arguments: [String], input: Data) async throws -> PersonalChatReply {
+    private static func run(arguments: [String], input: Data, timeout: UInt64) async throws -> PersonalChatReply {
         // Files avoid pipe deadlocks for attachments and large transcripts. The
         // private directory is removed on every exit; no command/output logging.
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cmux-personal-" + UUID().uuidString)
@@ -38,7 +38,7 @@ actor PersonalChatService: PersonalChatServing {
         process.standardError = FileHandle.nullDevice
         return try await withTaskCancellationHandler {
             let deadline = Task {
-                try await Task.sleep(nanoseconds: 45_000_000_000)
+                try await Task.sleep(nanoseconds: timeout)
                 if process.isRunning { process.terminate() }
             }
             defer { deadline.cancel() }

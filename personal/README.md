@@ -46,13 +46,40 @@ a model picker that the bridge cannot control.
 Version 0.4 names the native app **CheatCode**, keeping the original bundle ID,
 connection settings and project history. Use a chat’s **⋯ → Archive chat**
 (or right-click it) to move it into that project’s **Archive** section.
-Open Archive and use **⋯ → Restore chat** to put it back. Search includes
-archived conversations. Archiving the open chat preserves its unsent draft.
+Open Archive and use **⋯ → Restore chat** to put it back. Archive starts closed,
+stays closed when chats are archived, and shows 20 matching chats per page with
+**Load more**. Search filters both lists without forcing the archive open.
+Project disclosure is independent of the selected conversation. Archiving the open chat preserves its unsent draft.
 
 Archive membership is private to this Mac and persists in `config.archive.json`
 beside the existing configuration. It does not delete transcripts or files,
 stop running CLI sessions, or alter Claude permissions. The separate file also
 prevents older previews from erasing archive membership when saving settings.
+
+## Deletion and live feedback (0.5)
+
+Project **⋯ → Remove from app** removes only the local sidebar entry; adding the
+same folder again restores its server history. **Delete project from server…**
+shows the exact path and requires typing `delete`. It removes the folder, nested
+files, matching chat transcripts and uploads, and stops their managed CLI sessions.
+The server rejects home/project-container roots, hidden system paths, symlinked
+roots, changed targets and mounted subtrees. An archived chat also offers
+**Delete permanently**, with the same typed confirmation, retaining repository files.
+
+Deletion is scoped by canonical project path and session UUID. A private preview
+records filesystem identities before confirmation; commits validate every target,
+serialize lifecycle changes and keep retry receipts for a lost SSH response.
+Tombstones prevent late hooks from recreating deleted chat state. Unrelated
+Claude global account logs/settings are not edited; chat deletion removes its
+transcript, per-session transcript directory and CheatCode uploads/metadata.
+
+Sending immediately adds a local user bubble and displays sending/uploading or
+working/tool activity. Transcript acknowledgement reconciles the echo without
+duplicating it. Delivery errors never automatically resend; an uncertain message
+stays visible with a terminal-check notice and **Restore draft**. New assistant
+text reveals quickly (up to 1.2 seconds), respecting Reduce Motion. This is a
+presentation animation of actual received transcript text, not token streaming;
+the real CLI remains the source of message content and permission state.
 
 ## Daily launch and shutdown
 
