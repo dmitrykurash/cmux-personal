@@ -55,6 +55,12 @@ test("a failure says the host's words with no spinner, and the New Tab page draw
   expect(html).not.toContain("fix the build");
 });
 
+test("a failed start keeps the message it was asked", () => {
+  const html = renderToStaticMarkup(<CloudStartView start={{ ...start, state: "failed", message: "No machine free" }} />);
+  expect(html).toContain("fix the build");
+  expect(html).toContain("No machine free");
+});
+
 test("the startup checklist skips clone without a repository and explains a missing script", () => {
   const rows = startupChecklist({ key: "k", task: "hi", state: "starting", home: true, setup: { state: "skipped", hasScript: false } });
   expect(rows.map((row) => row.status)).toEqual(["pending", "skipped", "skipped", "pending"]);
