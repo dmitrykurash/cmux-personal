@@ -112,6 +112,28 @@ struct BackgroundAccessoryPolicyTests {
         defer { app.setActivationPolicy(policyBefore) }
         try await Self.withLaunch { launch in
             let windows = launch.services.windows
+            let services = launch.services
+            let started = ContinuousClock.now
+            var last = ""
+            let probe = Task { @MainActor in
+                while !Task.isCancelled {
+                    let store = services.daemon.store
+                    let line = "loaded=\(store.isLoaded) ws=\(store.workspaces.map { "\($0.id.prefix(6)):\($0.kind ?? "-")" }) "
+                        + "homeInFlight=\(services.home.homeEnsureInFlight) homeID=\(services.home.homeWorkspaceID?.rawValue.prefix(8) ?? "nil") "
+                        + "homeStep=\(services.home.homeWorkspaceStep.prefix(40)) restoring=\(windows.restoring) restored=\(windows.restored) "
+                        + "launching=\(windows.registry.isLaunching) controllers=\(windows.controllers.map { $0.state.id.prefix(6) }) "
+                        + "registry=\(windows.registry.value.windows.map { "\($0.id.prefix(6)):\($0.isOpen):\($0.workspaceIDs.map { $0.prefix(6) })" }) "
+                        + "launchID=\(windows.launchWindowID?.prefix(6) ?? "nil") closedLaunch=\(windows.closedLaunchWindowID?.prefix(6) ?? "nil") "
+                        + "closedDuring=\(windows.closedDuringRestore.map { $0.prefix(6) }) claims=\(windows.pendingClaims.mapValues { $0.prefix(6) }) "
+                        + "presented=\(launch.presented.policies.count)"
+                    if line != last {
+                        print("DIAG-BG +\((ContinuousClock.now - started).components.seconds)s\((ContinuousClock.now - started).components.attoseconds / 1_000_000_000_000_000)ms \(line)")
+                        last = line
+                    }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+            }
+            defer { probe.cancel() }
             windows.restoreWhenLoaded()
             try #require(!windows.restored, "the restore finished before the launch window could close")
             try #require(windows.controllers.count == 1, "no launch window")
