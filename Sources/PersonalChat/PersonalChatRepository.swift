@@ -4,6 +4,8 @@ actor PersonalChatRepository {
     struct Configuration: Codable, Sendable {
         var connection = PersonalChatConnection()
         var projects: [PersonalChatProject] = []
+        var selectedProjectID: UUID?
+        var selectedSessionID: String?
     }
     private let file: URL
 

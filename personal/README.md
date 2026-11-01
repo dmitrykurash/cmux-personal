@@ -42,6 +42,24 @@ sending. Subtle hover, focus, button and sidebar animations respect the macOS
 Reduce Motion preference. The engine label says Claude Code rather than offering
 a model picker that the bridge cannot control.
 
+## Daily launch and shutdown
+
+Version 0.3.1 reconnects automatically and restores the last selected project
+and chat. Opening history does not automatically start a new CLI or approve any
+prompt. Ended sessions still require **Resume session**. A fresh install opens
+Connection settings; failed connections remain retryable.
+
+On macOS, SSH uses `UseKeychain=yes` and `AddKeysToAgent=yes`, retaining strict
+host verification and no agent forwarding. If the key password is only in the
+current agent, run `personal/scripts/finish-login.command` once. It asks the user
+before saving that key password using Apple's `ssh-add --apple-use-keychain`,
+then tests access with `IdentityAgent=none`. No password is embedded in the
+launcher or app configuration. See [Apple's SSH Keychain documentation](https://developer.apple.com/library/archive/technotes/tn2449/_index.html).
+
+The Mac can be shut down while the VPS stays running. Sent messages and files
+remain on the VPS; unsent drafts and attachment selections are not persisted.
+The Mac only needs access to the VPS; Claude's provider connection is remote.
+
 ## First use
 
 1. Ensure `ssh developer@YOUR_HOST` works with a trusted known_hosts entry. Verify

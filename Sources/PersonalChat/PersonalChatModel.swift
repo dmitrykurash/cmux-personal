@@ -22,6 +22,7 @@ final class PersonalChatModel {
     private let repository: PersonalChatRepository
     private var refreshTask: Task<Void, Never>?
     private var selectionGeneration = UUID()
+    private var loaded = false
 
     init(service: any PersonalChatServing, repository: PersonalChatRepository) {
         self.service = service
@@ -32,23 +33,35 @@ final class PersonalChatModel {
     var canSend: Bool { connected && !busy && phase == "ready" && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) }
 
     func load() async {
+        if loaded {
+            if connected {
+                if selectedID != nil { startRefresh() }
+            } else if !connection.host.isEmpty {
+                await connect()
+            }
+            return
+        }
+        loaded = true
         do {
             let config = try await repository.load()
             connection = config.connection
             projects = config.projects
-            projectID = projects.first?.id
+            projectID = projects.contains { $0.id == config.selectedProjectID } ? config.selectedProjectID : projects.first?.id
+            selectedID = config.selectedSessionID
             showingSettings = connection.host.isEmpty
+            if !showingSettings { await connect() }
         } catch { self.error = error.localizedDescription }
     }
 
     func save() async throws {
-        try await repository.save(.init(connection: connection, projects: projects))
+        try await repository.save(.init(connection: connection, projects: projects, selectedProjectID: projectID, selectedSessionID: selectedID))
     }
 
     func connect() async {
         guard !busy else { return }
         busy = true
         defer { busy = false }
+        let previousSessionID = selectedID
         connected = false
         stopRefresh()
         selectionGeneration = UUID()
@@ -59,15 +72,20 @@ final class PersonalChatModel {
             let result = try await service.request(.init(op: "health"), connection: connection)
             guard result.user == "developer", result.claude == true, result.tmux == true else { throw PersonalChatError.missingDependencies }
             _ = try await service.request(.init(op: "install"), connection: connection)
-            try await save()
             projectsFolder = result.path ?? projectsFolder
             hasGitHubCLI = result.githubCLI == true
             connected = true
             error = nil
             showingSettings = false
             await reloadSessions()
-            if selectedID != nil { startRefresh() }
-        } catch { self.error = error.localizedDescription }
+            if let previousSessionID, sessions.contains(where: { $0.id == previousSessionID }) {
+                activateSession(previousSessionID)
+            }
+            if error == nil { try await save() }
+        } catch {
+            selectedID = previousSessionID
+            self.error = error.localizedDescription
+        }
     }
 
     func makeProjectImporter() -> PersonalChatProjectImporter {
@@ -83,7 +101,7 @@ final class PersonalChatModel {
         let project = PersonalChatProject(name: name, path: path)
         let updated = projects + [project]
         // Persist before exposing a new sidebar row; a failed save is retryable.
-        try await repository.save(.init(connection: connection, projects: updated))
+        try await repository.save(.init(connection: connection, projects: updated, selectedProjectID: project.id, selectedSessionID: nil))
         projects = updated
         await selectProject(project.id)
     }
@@ -100,6 +118,7 @@ final class PersonalChatModel {
         attachments = []
         phase = "offline"
         await reloadSessions()
+        do { try await save() } catch { self.error = error.localizedDescription }
     }
 
     func reloadSessions() async {
@@ -114,6 +133,11 @@ final class PersonalChatModel {
 
     func selectSession(_ id: String) {
         guard !busy else { return }
+        activateSession(id)
+        Task { do { try await save() } catch { self.error = error.localizedDescription } }
+    }
+
+    private func activateSession(_ id: String) {
         stopRefresh()
         selectionGeneration = UUID()
         selectedID = id
@@ -137,6 +161,7 @@ final class PersonalChatModel {
             messages = []
             phase = "starting"
             await reloadSessions()
+            try await save()
             startRefresh()
         } catch { self.error = error.localizedDescription }
     }

@@ -10,7 +10,8 @@ struct PersonalChatConnection: Codable, Equatable, Sendable {
               (1...65535).contains(port), !identityFile.contains("\n") else {
             throw PersonalChatError.invalidConnection
         }
-        var args = ["-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes",
+        var args = ["-o", "UseKeychain=yes", "-o", "AddKeysToAgent=yes",
+                    "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes",
                     "-o", "PermitLocalCommand=no", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15",
                     "-o", "ServerAliveCountMax=2", "-o", "BatchMode=yes", "-p", String(port), "-l", "developer"]
         if !identityFile.isEmpty {
