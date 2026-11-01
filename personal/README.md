@@ -122,13 +122,15 @@ This is an unofficial personal cmux modification, not an Anthropic product.
    compatibility, automated real-CLI scenarios, Intel build, signing/notarization.
 
 History refreshes every two seconds, shows the latest 400 rendered entries and
-lists up to 100 sessions per project. Files over 32 MiB require the terminal.
+lists up to 100 sessions per project. Transcript files over 32 MiB require the terminal.
 The parser follows an internal Claude transcript format, not a stable API;
 unknown JSONL records are ignored. Transient transcript edits and compaction
 may require additional adaptation. Inline Markdown is supported; media remains
 file references in this MVP. Project folders must already exist. The UI has one
 configured server. tmux survives disconnects, not a VPS reboot; use Resume after
-a reboot. Startup/MCP/trust dialogs must be completed in the terminal.
+a reboot. Startup/MCP/trust dialogs must be completed in the terminal. After cancelling
+a permission dialog with Escape, Claude may not emit a Stop hook; in that case
+the composer deliberately stays blocked until a normal terminal turn completes.
 
 Using the interactive CLI does not establish identical Anthropic quota usage,
 eligibility, availability or pricing. Those remain controlled by Anthropic.
