@@ -118,7 +118,8 @@ struct CloudStartChat {
         let (workRoots, accountText, machineID) = (services.cloud.move.workRoots, Self.accountText(account), machine.machineID)
         do {
             async let copied = Self.copy(cli, key: start.key, account: accountText, machine: machineID, socket: socket,
-                                         folder: folder, workRoots: workRoots, progress: sink)
+                                         folder: folder, workRoots: workRoots, progress: sink,
+                                         update: { await CloudMachineUpdates.updateNow(machineID, services: services) })
             for await line in lines {
                 var step = AgentPaneCloudStart.Step(name: "folder", folder: folderName, machine: name, size: size,
                                                     cloneState: "running", clonePhase: line.phase,
@@ -159,11 +160,15 @@ struct CloudStartChat {
 
     /// `link start-chat copy`, its progress lines into `progress`, which ends when the CLI has exited.
     private static func copy(_ cli: CloudMoveCLI, key: String, account: String, machine: String, socket: String, folder: CloudMoveFolder,
-                             workRoots: [String], progress: AsyncStream<SeedProgress>.Continuation) async throws
+                             workRoots: [String], progress: AsyncStream<SeedProgress>.Continuation,
+                             update: @MainActor @Sendable () async -> Bool) async throws
         -> (CloudMoveCLI.Answer, (chat: String, copied: Bool)) {
         defer { progress.finish() }
-        return try await cli.startChatCopy(key: key, account: account, machine: machine, socket: socket, local: folder.root,
-                                           subpath: folder.subpath, workRoots: workRoots, progress: { progress.yield($0) })
+        // A machine whose older cmux-tui refuses the copy is updated to this app's build, then copied again (CloudOutdatedMachine).
+        return try await CloudOutdatedMachine.copy({
+            try await cli.startChatCopy(key: key, account: account, machine: machine, socket: socket, local: folder.root,
+                                        subpath: folder.subpath, workRoots: workRoots, progress: { progress.yield($0) })
+        }, answer: { ($0.0.ok, $0.0.errorCode, $0.0.side) }, update: update)
     }
 
     /// Opens the chat on `machine` in `cwd` under the plan's `tabKey` (a retry gets the same tab) and closes
