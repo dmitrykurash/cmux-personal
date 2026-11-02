@@ -57,7 +57,7 @@ struct ApprovalChecks {
         await service.holdNextRead()
         let staleRead = Task { await model.refresh() }
         await service.waitForRead()
-        let allow = Task { await model.decideApproval(approval, decision: "allow") }
+        let allow = Task { await model.decideApproval(approval, decision: "allow", answers: ["Choose": "Alpha"]) }
         await service.waitForDecision()
         precondition(model.busy && model.approvals == [approval], "Keep the card disabled until SSH acknowledges the decision")
         let duplicate = await model.decideApproval(approval, decision: "allow")
@@ -69,6 +69,7 @@ struct ApprovalChecks {
         precondition(allowed && model.approvals.isEmpty && model.draft == "Keep my draft", "A stale read cannot resurrect an answered card or erase the draft")
         let sent = await service.decisions
         precondition(sent.count == 1 && sent[0].id == sid && sent[0].project == project.path && sent[0].approvalID == approval.id && sent[0].decision == "allow")
+        precondition(sent[0].answers == ["Choose": "Alpha"], "Question answers travel with the exact request")
         let stale = await model.decideApproval(approval, decision: "allow")
         precondition(!stale)
 

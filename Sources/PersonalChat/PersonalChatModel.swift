@@ -36,6 +36,8 @@ final class PersonalChatModel {
     private var selectionGeneration = UUID()
     private var loaded = false
 
+    func makeGitHub() -> PersonalChatGitHub { PersonalChatGitHub(service: service, connection: connection) }
+
     init(service: any PersonalChatServing, repository: PersonalChatRepository) {
         self.service = service
         self.repository = repository
@@ -309,7 +311,7 @@ final class PersonalChatModel {
     func stopRefresh() { refreshTask?.cancel(); refreshTask = nil }
 
     @discardableResult
-    func decideApproval(_ approval: PersonalChatApproval, decision: String) async -> Bool {
+    func decideApproval(_ approval: PersonalChatApproval, decision: String, answers: [String: String]? = nil) async -> Bool {
         guard connected, !busy, ["allow", "deny", "terminal"].contains(decision),
               selectedID == approval.sessionID, project?.path == approval.project,
               approvals.contains(approval) else { return false }
@@ -319,7 +321,7 @@ final class PersonalChatModel {
         selectionGeneration = UUID() // Discard reads that predate this decision.
         defer { busy = false; startRefresh() }
         do {
-            _ = try await service.request(.init(op: "permission_decide", id: approval.sessionID, project: approval.project, approvalID: approval.id, decision: decision), connection: connection)
+            _ = try await service.request(.init(op: "permission_decide", id: approval.sessionID, project: approval.project, approvalID: approval.id, decision: decision, answers: answers), connection: connection)
             approvals.removeAll { $0.id == approval.id }
             if approvals.isEmpty && decision != "terminal" { phase = "busy" }
             return true
@@ -331,6 +333,8 @@ final class PersonalChatModel {
             return false
         }
     }
+
+    func resumeNativeApprovals() { nativeApprovalsEnabled = true; startRefresh() }
 
     func releaseApprovalsToTerminal() async -> Bool {
         guard connected, !busy, let id = selectedID, let project else { return false }

@@ -50,8 +50,8 @@ struct PersonalChatComposer: View {
                         Image(systemName: "terminal").font(.system(size: 13)).frame(width: 28, height: 28)
                     }.buttonStyle(PersonalChatHoverStyle(radius: 7))
                         .disabled(model.selectedID == nil || model.phase == "offline" || !model.connected)
-                        .help(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle))
-                        .accessibilityLabel(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle))
+                        .help(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
+                        .accessibilityLabel(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
                     Spacer()
                     sendButton
                 }.foregroundStyle(palette.secondary)
@@ -127,11 +127,11 @@ struct PersonalChatComposer: View {
                     .disabled(!model.connected || model.busy)
             } else {
                 Image(systemName: "hand.raised")
-                Text(String(localized: "personal.permission", defaultValue: "Continue in the terminal to review permissions or questions.", bundle: PersonalChatStrings.bundle)).lineLimit(2)
+                Text(String(localized: "personal.console.fallback", defaultValue: "Continue in the console to finish this step.", bundle: PersonalChatStrings.bundle)).lineLimit(2)
                 Spacer()
                 Button(action: openTerminal) { Image(systemName: "arrow.up.right") }
-                    .help(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle))
-                    .accessibilityLabel(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle))
+                    .help(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
+                    .accessibilityLabel(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
             }
             Spacer(minLength: 0)
         }.font(PersonalChatTypography.body(12)).foregroundStyle(palette.secondary).buttonStyle(.plain).padding(.horizontal, 4)

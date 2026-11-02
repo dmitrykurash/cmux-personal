@@ -7,9 +7,13 @@ mkdir -p "$dest"
 dest="$(cd "$dest" && pwd)"
 app="$dest/CheatCode.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-swiftc -O -swift-version 6 -target "$(uname -m)-apple-macosx14.0" \
+bash "$root/personal/scripts/build-terminal.sh"
+terminal="$root/.personal-deps/SwiftTerm-464df5207fc2432e16c9a23abe538187196daf5f"
+terminal_build="$terminal/.build/release"
+swiftc -I "$terminal_build/Modules" "$terminal_build"/SwiftTerm.build/*.o -O -swift-version 6 -target "$(uname -m)-apple-macosx14.0" \
   "$root"/Sources/PersonalChat/*.swift "$root/personal/PreviewMain.swift" \
   -o "$app/Contents/MacOS/PersonalChat"
+cp "$terminal/LICENSE" "$app/Contents/Resources/SwiftTerm-LICENSE.txt"
 cp "$root/personal/bridge.py" "$app/Contents/Resources/personal-bridge.py"
 python3 - "$app/Contents/Resources/PersonalChatAssets" <<'PYLOGO'
 from pathlib import Path
@@ -50,8 +54,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>CheatCode</string>
 <key>CFBundleDisplayName</key><string>CheatCode</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.6.0</string>
-<key>CFBundleVersion</key><string>8</string>
+<key>CFBundleShortVersionString</key><string>0.7.0</string>
+<key>CFBundleVersion</key><string>9</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

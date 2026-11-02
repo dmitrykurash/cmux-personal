@@ -3,15 +3,14 @@ import SwiftUI
 struct PersonalChatProjectSetupView: View {
     @State private var importer: PersonalChatProjectImporter
     let addProject: @MainActor (String, String) async throws -> Void
-    let openTerminal: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
     @State private var browsing = false
+    @State private var showingGitHub = false
 
-    init(importer: PersonalChatProjectImporter, addProject: @escaping @MainActor (String, String) async throws -> Void, openTerminal: @escaping (String) -> Void) {
+    init(importer: PersonalChatProjectImporter, addProject: @escaping @MainActor (String, String) async throws -> Void) {
         _importer = State(initialValue: importer)
         self.addProject = addProject
-        self.openTerminal = openTerminal
     }
 
     var body: some View {
@@ -36,8 +35,7 @@ struct PersonalChatProjectSetupView: View {
                     .font(PersonalChatTypography.body(11)).foregroundStyle(palette.secondary)
                 if importer.hasGitHubCLI {
                     Button {
-                        do { openTerminal(try importer.connection.githubSignInCommand()) }
-                        catch { importer.issue = error.localizedDescription }
+                        showingGitHub = true
                     } label: {
                         Label(String(localized: "personal.import.githubLogin", defaultValue: "Sign in to GitHub…", bundle: PersonalChatStrings.bundle), systemImage: "arrow.up.right.square")
                     }.buttonStyle(.plain).font(PersonalChatTypography.body(12)).disabled(importer.busy)
@@ -79,6 +77,7 @@ struct PersonalChatProjectSetupView: View {
             }.padding(.top, 4)
         }.padding(28).frame(width: 540).background(palette.canvas)
             .interactiveDismissDisabled(importer.busy || importer.jobID != nil)
+            .sheet(isPresented: $showingGitHub) { PersonalChatGitHubView(model: importer.makeGitHub()) }
             .sheet(isPresented: $browsing) {
                 PersonalChatFolderPicker(importer: importer) { folder in
                     if importer.mode == .existing {

@@ -5325,5 +5325,9 @@
   "personal.menu": {
     "class": "brand",
     "source": "CheatCode…"
+  },
+  "personal.brand.github": {
+    "class": "brand",
+    "source": "GitHub"
   }
 }

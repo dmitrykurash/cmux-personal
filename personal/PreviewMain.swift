@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// The same native chat UI with the standard macOS editing/menu commands.
-/// The full cmux build opens Ghostty; this preview uses Terminal.app.
+/// The standalone build embeds a native SSH console; the full fork uses Ghostty.
 @main
 struct PersonalChatPreview: App {
     @State private var model: PersonalChatModel

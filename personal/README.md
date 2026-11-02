@@ -3,8 +3,9 @@
 This is an additive personal modification of cmux, based on upstream commit
 `c5fd30b26e1ab19b4e2d31e38bf2f92b9f2f5edd` (inspected 2026-11-01).
 Open **File → CheatCode…** in the full fork. The separate **CheatCode** executable builds the same SwiftUI chat with Command Line
-Tools and uses Terminal.app for the terminal button. It is a verification and
-early-use build, not a replacement for the full Ghostty-based cmux application.
+Tools and embeds a native SSH console using pinned SwiftTerm 1.19.0. The full
+cmux fork retains its Ghostty terminal. Neither path requires Terminal.app for
+normal chat interactions.
 
 ## What this MVP does
 
@@ -23,11 +24,12 @@ early-use build, not a replacement for the full Ghostty-based cmux application.
 - Uses Claude hooks to gate input while busy or awaiting permission. Version 0.6
   shows native permission cards with the exact tool input and Allow once / Deny.
   The bridge returns only an explicit user's decision for that exact request;
-  it never changes persistent permission rules. Questions, slash-command pickers,
-  initial trust, passwords and MCP sign-in retain the real terminal UI.
+  it never changes persistent permission rules. Version 0.7 adds native questions,
+  plan review and GitHub device login. Slash-command pickers, initial trust,
+  passwords and MCP sign-in retain the real CLI inside the app console.
   Stop sends Escape; it never kills the remote server.
 
-## Native permission cards (0.6)
+## Native permissions, questions and plans (0.7)
 
 The active chat opts into native approvals on each SSH read. A `PermissionRequest`
 hook publishes a short-lived request with a random ID, project, session, tool and
@@ -44,16 +46,43 @@ shows them for review, but never writes them into app logs or chat history.
 
 The hook waits for at most nine minutes. If the active chat stops renewing its
 15-second desktop lease, control returns to the CLI's permission dialog. Opening
-the terminal from the app explicitly releases even unseen native requests first.
-Native approval resumes when you send from the chat or select the conversation again.
+the console from the app explicitly releases even unseen native requests first.
+Native approval resumes when you return to chat, send or select the conversation again.
 Legacy clients never opt in. Prompts already opened before updating cannot be
-converted retroactively; answer those in the terminal once. New requests in an
+converted retroactively; answer those in the in-app console once. New requests in an
 existing session use the updated bridge without restarting Claude.
 
-`AskUserQuestion`, `ExitPlanMode`, oversized input, initial trust, sandbox network
-prompts, password entry and OAuth/slash-command screens retain terminal handling.
-GitHub or MCP authentication may also open the browser. Installing software still
-happens on the VPS. This release does not embed a terminal in the standalone app.
+`AskUserQuestion` renders single/multiple-choice options and a custom answer field.
+Submission validates every answer and returns `updatedInput` for that exact waiting
+hook. `ExitPlanMode` displays the complete plan before approval and clears suggested
+`allowedPrompts`; it does not add tool permissions. Missing/unsupported schemas or
+oversized inputs fall back to the console rather than being guessed or approved.
+
+The standalone console attaches to the existing remote tmux session over the same
+strict SSH connection. Closing it disconnects only its local SSH process and reaps
+that child; Claude keeps running. Remote OSC 52 clipboard reads/writes are disabled.
+Web links open only on an explicit click and only for HTTP(S). Terminal input and
+output, including password entry, are not stored by CheatCode. Normal CLI history
+and server-side behavior remain governed by the CLI. SwiftTerm is MIT-licensed;
+its revision and dependency resolutions are pinned, and its license is bundled.
+
+## GitHub sign-in (0.7)
+
+Use **GitHub** in the chat header, or **Sign in to GitHub…** when adding a repository.
+CheatCode runs the installed `gh auth login --web --hostname github.com --git-protocol
+https` on the VPS and shows its one-time code with a fixed GitHub browser link.
+Finish the device authorization yourself in the browser. A detached worker waits
+for the result; successful login configures Git's GitHub credential helper. No
+access token, password or raw CLI output is returned to the Mac. GitHub CLI owns
+credential storage on the VPS. Use HTTPS URLs for private GitHub repositories.
+
+Reopening/retrying recovers the same active sign-in. Cancel targets only that job's
+verified Linux process identity and child process group. Closing the sheet stops
+local waiting; an unfinished server job expires after 15 minutes. Jobs publish only
+status and a short-lived device code in owner-only files. Missing `gh` is reported
+in the UI; ask Claude to install it and approve the tool request in chat. A sudo
+password, if required, still needs the in-app console. New CLI sessions include
+`~/.local/bin` on PATH so user-local Git/GitHub installations are available.
 
 ## Native interface
 
@@ -152,7 +181,8 @@ The Mac only needs access to the VPS; Claude's provider connection is remote.
    The selected folder is always visible below the project name. All chats in
    one project share its files; different projects can use different folders.
 5. Choose **New chat**. Review tool requests with **Allow once** or **Deny** in
-   chat. Open terminal for first-folder trust, passwords or interactive questions.
+   chat. Answer questions and review plans in their native cards. Use **Open console**
+   for first-folder trust, passwords, `/mcp` and unsupported CLI screens.
    Trust is never approved by the app.
 6. Select files with the **paperclip**, or drop them onto the composer, then Send. The app never automatically
    resends a message after an uncertain SSH failure; inspect the terminal first.
@@ -161,9 +191,8 @@ The Mac only needs access to the VPS; Claude's provider connection is remote.
 
 Git must be installed on the VPS. `personal/scripts/bootstrap-git-ubuntu.sh`
 provides an optional user-local Git/GitHub CLI on a compatible Ubuntu host.
-For private GitHub repositories, **Sign in to GitHub…** opens a normal SSH
-terminal running GitHub's device login. Complete that login yourself, then use
-an HTTPS repository URL. Provider credentials stay on the VPS; never embed a
+For private GitHub repositories, **Sign in to GitHub…** shows a native device-code
+flow. Complete that login yourself in your browser, then use an HTTPS repository URL. Provider credentials stay on the VPS; never embed a
 password/token in a URL. SSH URLs require the VPS to have its own trusted host
 entry and appropriate key. No Mac SSH agent is forwarded.
 

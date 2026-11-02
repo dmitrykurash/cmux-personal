@@ -104,7 +104,8 @@ class BridgeTests(unittest.TestCase):
             bridge.start(self.sid, self.project, False)
             args = run.call_args.args
             command = args[-1]
-            self.assertTrue(command.startswith("exec "))
+            self.assertTrue(command.startswith("export PATH="))
+            self.assertIn("/.local/bin:$PATH; exec ", command)
             self.assertIn("--session-id", command)
             self.assertNotIn("--print", command)
             self.assertNotIn("stream-json", command)

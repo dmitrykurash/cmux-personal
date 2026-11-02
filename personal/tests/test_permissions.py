@@ -110,6 +110,38 @@ class PermissionTests(unittest.TestCase):
         bridge.dispatch({'op': 'read', 'id': self.sid, 'project': str(self.project)})
         self.assertIsNone(bridge.hook(self.sid, self.event), 'Older UI must not enable hooks that wait')
 
+    def test_question_answers_preserve_input_and_validate_before_consuming(self):
+        questions = [{'question': 'Choose a style', 'options': [{'label': 'Alpha'}, {'label': 'Beta'}], 'multiSelect': False},
+                     {'question': 'Choose features', 'options': [{'label': 'One'}, {'label': 'Two'}], 'multiSelect': True}]
+        event = {**self.event, 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': questions}}
+        thread, output, request = self.launch(event)
+        self.assertEqual(request['questions'], questions)
+        for answers in [None, {}, {'Choose a style': 'Alpha'}, {'Choose a style': 'Alpha', 'Choose features': ''}]:
+            with self.assertRaises(ValueError): self.decide(request['id'], answers=answers)
+            self.assertTrue(thread.is_alive())
+        answers = {'Choose a style': 'My custom answer', 'Choose features': 'One, Two'}
+        self.decide(request['id'], answers=answers); thread.join(3)
+        decision = output[0]['hookSpecificOutput']['decision']
+        self.assertEqual(decision['updatedInput'], {'questions': questions, 'answers': answers})
+        self.assertNotIn('updatedPermissions', decision)
+
+    def test_plan_requires_visible_content_and_does_not_grant_broad_permissions(self):
+        event = {**self.event, 'tool_name': 'ExitPlanMode', 'tool_input': {'plan': '# Reviewed plan', 'allowedPrompts': [{'tool': 'Bash', 'prompt': 'all commands'}]}}
+        thread, output, request = self.launch(event)
+        self.assertEqual(request['plan'], '# Reviewed plan')
+        self.decide(request['id']); thread.join(3)
+        self.assertEqual(output[0]['hookSpecificOutput']['decision']['updatedInput'], {'plan': '# Reviewed plan', 'allowedPrompts': []})
+        self.assertIsNone(bridge.hook(self.sid, {**event, 'tool_input': {'plan': ''}}))
+
+    def test_non_object_frame_cannot_terminate_pending_permission(self):
+        thread, output, request = self.launch()
+        _, sock = bridge.permission_paths(request['id'])
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
+            stream.connect(str(sock)); stream.sendall(b'[]\n'); stream.shutdown(socket.SHUT_WR)
+            stream.recv(1024)
+        self.decide(request['id'], 'deny'); thread.join(3)
+        self.assertEqual(output[0]['hookSpecificOutput']['decision']['behavior'], 'deny')
+
     def test_timeout_never_approves(self):
         with patch.object(bridge, 'PERMISSION_SECONDS', 0.1):
             thread, output, request = self.launch()

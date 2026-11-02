@@ -19,6 +19,8 @@ final class PersonalChatProjectImporter {
     let connection: PersonalChatConnection
     private let service: any PersonalChatServing
 
+    func makeGitHub() -> PersonalChatGitHub { PersonalChatGitHub(service: service, connection: connection) }
+
     init(service: any PersonalChatServing, connection: PersonalChatConnection, basePath: String, hasGitHubCLI: Bool) {
         self.service = service
         self.connection = connection

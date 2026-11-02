@@ -10,6 +10,8 @@ struct PersonalChatView: View {
     @State private var search = ""
     @State private var addingProject = false
     @State private var sidebarState = PersonalChatSidebarState()
+    @State private var showingGitHub = false
+    @State private var consoleRequest: PersonalChatConsoleRequest?
     @State private var deletionTarget: PersonalChatDeletionTarget?
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
     private var isConversationEmpty: Bool { model.messages.isEmpty && model.approvals.isEmpty }
@@ -42,12 +44,16 @@ struct PersonalChatView: View {
             }
         }
         .sheet(isPresented: $addingProject) {
-            PersonalChatProjectSetupView(importer: model.makeProjectImporter(), addProject: model.addProject, openTerminal: openTerminal)
+            PersonalChatProjectSetupView(importer: model.makeProjectImporter(), addProject: model.addProject)
         }
         .sheet(item: $deletionTarget) { target in
             PersonalChatDeletionView(target: target, prepare: { try await model.prepareDeletion(target) }, commit: { planID, confirmation in
                 try await model.performDeletion(target, planID: planID, confirmation: confirmation)
             })
+        }
+        .sheet(isPresented: $showingGitHub) { PersonalChatGitHubView(model: model.makeGitHub()) }
+        .sheet(item: $consoleRequest, onDismiss: { model.resumeNativeApprovals() }) { request in
+            PersonalChatConsoleSheet(request: request)
         }
         .onChange(of: search) { sidebarState.resetPages() }
         .alert(String(localized: "personal.attention", defaultValue: "Needs attention", bundle: PersonalChatStrings.bundle), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
@@ -311,9 +317,12 @@ struct PersonalChatView: View {
                 }
             }
             Spacer()
+            Button { showingGitHub = true } label: {
+                Text(String(localized: "personal.brand.github", defaultValue: "GitHub", bundle: PersonalChatStrings.bundle)).font(PersonalChatTypography.body(11)).padding(.horizontal, 10).padding(.vertical, 6)
+            }.buttonStyle(PersonalChatHoverStyle(radius: 7)).foregroundStyle(palette.secondary).disabled(!model.connected)
             if model.selectedID != nil {
                 Button(action: showTerminal) {
-                    Label(String(localized: "personal.terminal", defaultValue: "Open terminal", bundle: PersonalChatStrings.bundle), systemImage: "terminal")
+                    Label(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle), systemImage: "terminal")
                         .font(PersonalChatTypography.body(11)).padding(.horizontal, 10).padding(.vertical, 6)
                 }.buttonStyle(PersonalChatHoverStyle(radius: 7)).foregroundStyle(palette.secondary)
                     .disabled(model.phase == "offline" || !model.connected)
@@ -329,8 +338,8 @@ struct PersonalChatView: View {
                         PersonalChatMessageView(message: message, animate: model.revealingMessageIDs.contains(message.id)) { model.finishReveal(message.id) }
                     }
                     ForEach(model.approvals) { approval in
-                        PersonalChatApprovalView(approval: approval, disabled: model.busy || !model.connected, decide: { decision in
-                            Task { await model.decideApproval(approval, decision: decision) }
+                        PersonalChatApprovalView(approval: approval, disabled: model.busy || !model.connected, decide: { decision, answers in
+                            Task { await model.decideApproval(approval, decision: decision, answers: answers) }
                         }, openTerminal: showTerminal)
                         .transition(.opacity)
                     }
@@ -366,7 +375,11 @@ struct PersonalChatView: View {
         guard let id = model.selectedID else { return }
         Task {
             guard await model.releaseApprovalsToTerminal(), model.selectedID == id else { return }
-            do { openTerminal(try model.connection.terminalCommand(sessionID: id)) }
+            do {
+                let command = try model.connection.terminalCommand(sessionID: id)
+                if PersonalChatConsoleSheet.supported { consoleRequest = .init(command: command) }
+                else { openTerminal(command) }
+            }
             catch { model.error = error.localizedDescription }
         }
     }

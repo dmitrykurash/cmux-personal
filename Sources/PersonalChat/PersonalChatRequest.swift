@@ -15,4 +15,5 @@ struct PersonalChatRequest: Encodable, Sendable {
     var approvalUI: Bool? = nil
     var approvalID: String? = nil
     var decision: String? = nil
+    var answers: [String: String]? = nil
 }

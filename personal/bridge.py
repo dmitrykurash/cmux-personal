@@ -127,19 +127,57 @@ def pending_permissions(sid, project):
 
 def permission_frame(stream):
     data = bytearray()
-    while len(data) <= 2048:
-        chunk = stream.recv(2049 - len(data))
+    while len(data) <= 32 * 1024:
+        chunk = stream.recv(32 * 1024 + 1 - len(data))
         if not chunk:
             raise ValueError("Approval connection closed")
         data.extend(chunk)
         if b"\n" in data:
-            return json.loads(data.split(b"\n", 1)[0])
+            value = json.loads(data.split(b"\n", 1)[0])
+            if not isinstance(value, dict):
+                raise ValueError("Invalid approval response")
+            return value
     raise ValueError("Approval response is too large")
 
 
+def native_questions(tool_input):
+    questions = tool_input.get("questions")
+    if not isinstance(questions, list) or not 1 <= len(questions) <= 4:
+        return None
+    seen = set()
+    for q in questions:
+        if not isinstance(q, dict) or not isinstance(q.get("question"), str) or not q["question"] or q["question"] in seen:
+            return None
+        seen.add(q["question"])
+        options = q.get("options")
+        if not isinstance(options, list) or not 1 <= len(options) <= 8:
+            return None
+        labels = [o.get("label") for o in options if isinstance(o, dict)]
+        if len(labels) != len(options) or any(not isinstance(label, str) or not label for label in labels) or len(set(labels)) != len(labels):
+            return None
+        if any(not isinstance(o.get("description", ""), str) for o in options) or not isinstance(q.get("multiSelect", False), bool):
+            return None
+    return questions
+
+
+def permission_output(event, decision, answers=None):
+    output = {"behavior": decision}
+    if decision == "deny":
+        output["message"] = "The user declined this request in CheatCode."
+    elif event["tool_name"] == "AskUserQuestion":
+        questions = native_questions(event["tool_input"])
+        if not questions or not isinstance(answers, dict) or set(answers) != {q["question"] for q in questions}:
+            raise ValueError("Answer every question")
+        if any(not isinstance(value, str) or not value.strip() or len(value.encode()) > 4096 for value in answers.values()):
+            raise ValueError("Invalid answer")
+        output["updatedInput"] = {**event["tool_input"], "answers": answers}
+    elif event["tool_name"] == "ExitPlanMode":
+        output["updatedInput"] = {**event["tool_input"], "allowedPrompts": []}
+    return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": output}}
+
+
 def request_permission(sid, event):
-    # Interactive questions, trust, passwords and oversized inputs keep the CLI UI.
-    if event.get("tool_name") in (None, "AskUserQuestion", "ExitPlanMode") or not isinstance(event.get("tool_input"), dict):
+    if not event.get("tool_name") or not isinstance(event.get("tool_input"), dict):
         return None
     if event.get("session_id") != sid or ui_lease(sid) <= time.time():
         return None
@@ -154,6 +192,16 @@ def request_permission(sid, event):
     expires = time.time() + PERMISSION_SECONDS
     value = {"id": rid, "sessionID": sid, "project": str(project),
              "tool": str(event["tool_name"]), "detail": detail, "expires": expires}
+    if event["tool_name"] == "AskUserQuestion":
+        questions = native_questions(event["tool_input"])
+        if questions is None:
+            return None
+        value["questions"] = questions
+    if event["tool_name"] == "ExitPlanMode":
+        plan = event["tool_input"].get("plan")
+        if not isinstance(plan, str) or not plan.strip():
+            return None  # Never approve a plan the user cannot review.
+        value["plan"] = plan
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
             server.bind(str(socket_path))
@@ -184,6 +232,11 @@ def request_permission(sid, event):
                         if min(expires, ui_lease(sid)) <= time.time() or (ROOT / "deleted" / sid).exists():
                             return None
                         decision = answer["decision"]
+                        try:
+                            output = permission_output(event, decision, answer.get("answers")) if decision != "terminal" else None
+                        except ValueError:
+                            stream.sendall(b'{"accepted":false}\n')
+                            continue
                         # Consume before acknowledging. A duplicate/stale card can
                         # never answer another request, including after reconnect.
                         path.unlink(missing_ok=True)
@@ -195,10 +248,7 @@ def request_permission(sid, event):
                             pass  # The decision arrived; never ask the UI to resend it.
                         if decision == "terminal":
                             return None
-                        output = {"behavior": decision}
-                        if decision == "deny":
-                            output["message"] = "The user declined this request in CheatCode."
-                        return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": output}}
+                        return output
                     except (OSError, ValueError, TypeError):
                         continue
     finally:
@@ -223,7 +273,10 @@ def decide_permission(request):
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
                 stream.settimeout(3)
                 stream.connect(str(socket_path))
-                stream.sendall((json.dumps({"id": rid, "sessionID": sid, "decision": decision}) + "\n").encode())
+                frame = (json.dumps({"id": rid, "sessionID": sid, "decision": decision, "answers": request.get("answers")}) + "\n").encode()
+                if len(frame) > 32 * 1024:
+                    raise ValueError("Answer is too large")
+                stream.sendall(frame)
                 if permission_frame(stream).get("accepted") is not True:
                     raise ValueError("This permission request is no longer active")
         except OSError:
@@ -384,7 +437,7 @@ def start(sid, project, resume):
         hooks["PermissionRequest"][0]["hooks"][0]["timeout"] = 600
         settings = ROOT / (sid + ".settings.json")
         atomic_json(settings, {"hooks": hooks})
-        command = "exec " + shlex.join([claude, "--resume" if resume else "--session-id", sid,
+        command = "export PATH=" + shlex.quote(str(Path.home() / ".local/bin")) + ":$PATH; exec " + shlex.join([claude, "--resume" if resume else "--session-id", sid,
                                          "--settings", str(settings), "--permission-mode", "default"])
         atomic_json(ROOT / (sid + ".json"), {"id": sid, "project": str(project)})
         set_status(sid, "starting")
@@ -827,9 +880,179 @@ def commit_deletion(request):
         return {'phase': 'done'}
 
 
+def github_folder(jid):
+    return ROOT / 'github' / session_id(jid)
+
+
+def github_state(jid):
+    state = json.loads((github_folder(jid) / 'status.json').read_text())
+    # PID/identity stay on the VPS; only UI data crosses SSH.
+    return {key: state[key] for key in ('id', 'phase', 'deviceCode') if key in state}
+
+
+def github_status():
+    binary = executable('gh')
+    if not binary:
+        return {'phase': 'unavailable'}
+    result = subprocess.run([binary, 'auth', 'status', '--hostname', 'github.com'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+    return {'phase': 'connected' if result.returncode == 0 else 'signedOut'}
+
+
+def begin_github(jid):
+    status = github_status()
+    if status['phase'] in ('connected', 'unavailable'):
+        return status
+    with lifecycle_lock():
+        parent = private_dir(ROOT / 'github')
+        active = parent / 'active.json'
+        if active.exists():
+            previous = json.loads(active.read_text())['id']
+            folder = github_folder(previous)
+            try:
+                with (folder / 'running.lock').open('rb') as lock:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return github_state(previous)  # Resume the same sign-in after reopening.
+            except FileNotFoundError:
+                pass  # A removed or never-started job must not block a new sign-in.
+        folder = github_folder(jid)
+        if folder.exists():
+            return github_state(jid)  # Idempotent recovery after a lost reply.
+        private_dir(folder)
+        state = {'id': jid, 'phase': 'starting'}
+        atomic_json(folder / 'status.json', state)
+        atomic_json(active, {'id': jid})
+        fds = []
+        try:
+            for name in ('running.lock', 'ready.lock'):
+                fd = os.open(folder / name, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                fds.append(fd)
+            subprocess.Popen([sys.executable, str(ROOT / 'bridge.py'), '--github-job', jid, *map(str, fds)],
+                             pass_fds=fds, start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            atomic_json(folder / 'status.json', {'id': jid, 'phase': 'failed'})
+            raise
+        finally:
+            for fd in fds:
+                os.close(fd)
+        return state
+
+
+def wait_github(jid):
+    state = github_state(jid)
+    if state['phase'] not in ('starting', 'waiting'):
+        return state
+    folder = github_folder(jid)
+    name = 'ready.lock' if state['phase'] == 'starting' else 'running.lock'
+    def deadline(_signum, _frame):
+        raise TimeoutError()
+    previous = signal.signal(signal.SIGALRM, deadline)
+    try:
+        with (folder / name).open('rb') as lock:
+            signal.alarm(25)
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                state = github_state(jid)
+                if state['phase'] == 'starting' or (name == 'running.lock' and state['phase'] == 'waiting'):
+                    state = {'id': jid, 'phase': 'failed'}
+                    atomic_json(folder / 'status.json', state)
+                return state
+            except TimeoutError:
+                return github_state(jid)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def cancel_github(jid):
+    folder = github_folder(jid)
+    state = json.loads((folder / 'status.json').read_text())
+    if state['phase'] not in ('starting', 'waiting'):
+        return github_state(jid)
+    (folder / 'cancel').touch(mode=0o600, exist_ok=True)
+    pid, identity = state.get('pid'), state.get('identity')
+    if pid and identity and process_identity(pid) == identity:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGTERM)
+    return {'id': jid, 'phase': 'cancelling'}
+
+
+def github_worker(jid, running_fd, ready_fd):
+    import selectors
+    folder = github_folder(jid)
+    state = {'id': jid, 'phase': 'starting', 'pid': os.getpid(), 'identity': process_identity(os.getpid())}
+    child = None
+    ready_open = True
+    def cancelled(_signum, _frame):
+        raise ImportCancelled()
+    signal.signal(signal.SIGTERM, cancelled)
+    try:
+        atomic_json(folder / 'status.json', state)
+        if (folder / 'cancel').exists():
+            raise ImportCancelled()
+        env = os.environ.copy()
+        env.update(GH_BROWSER='/usr/bin/true', BROWSER='/usr/bin/true', GH_PROMPT_DISABLED='1', NO_COLOR='1', LC_ALL='C',
+                   PATH=str(Path.home()/'.local/bin') + os.pathsep + env.get('PATH', ''))
+        child = subprocess.Popen([executable('gh'), 'auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web'],
+                                 env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        deadline = time.monotonic() + 900
+        tail = ''
+        with selectors.DefaultSelector() as selector:
+            selector.register(child.stdout, selectors.EVENT_READ)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not selector.select(remaining):
+                    raise TimeoutError()
+                chunk = os.read(child.stdout.fileno(), 4096)
+                if not chunk:
+                    break
+                tail = (tail + chunk.decode(errors='replace'))[-8192:]
+                match = re.search(r'one-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})\b', re.sub(r'\x1b\[[0-9;]*m', '', tail))
+                if match and 'deviceCode' not in state:
+                    state.update(phase='waiting', deviceCode=match.group(1))
+                    atomic_json(folder / 'status.json', state)
+                    os.close(ready_fd); ready_open = False
+        code = child.wait(timeout=5)
+        if code == 0:
+            result = subprocess.run([executable('gh'), 'auth', 'setup-git', '--hostname', 'github.com'], env=env,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+            state['phase'] = 'connected' if result.returncode == 0 else 'failed'
+        else:
+            state['phase'] = 'failed'
+    except ImportCancelled:
+        state['phase'] = 'cancelled'
+    except Exception:
+        state['phase'] = 'failed'
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        if child is not None and child.poll() is None:
+            with contextlib.suppress(ProcessLookupError): os.killpg(child.pid, signal.SIGTERM)
+            try: child.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                with contextlib.suppress(ProcessLookupError): os.killpg(child.pid, signal.SIGKILL)
+                child.wait(timeout=3)
+        if child is not None and child.stdout is not None:
+            child.stdout.close()
+        for key in ('pid', 'identity', 'deviceCode'):
+            state.pop(key, None)
+        atomic_json(folder / 'status.json', state)
+        if ready_open: os.close(ready_fd)
+        os.close(running_fd)
+
+
 def dispatch(request):
     op = request["op"]
     private_dir(ROOT)
+    if op == "github_status":
+        return {"githubLogin": github_status()}
+    if op == "github_begin":
+        return {"githubLogin": begin_github(session_id(request["id"]))}
+    if op == "github_wait":
+        return {"githubLogin": wait_github(session_id(request["id"]))}
+    if op == "github_cancel":
+        return {"githubLogin": cancel_github(session_id(request["id"]))}
     if op == "deletion_prepare":
         return prepare_deletion(request)
     if op == "deletion_commit":
@@ -910,6 +1133,9 @@ def hook(sid, event):
 
 def main():
     os.umask(0o077)
+    if len(sys.argv) == 5 and sys.argv[1] == "--github-job":
+        github_worker(session_id(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]))
+        return
     if len(sys.argv) == 4 and sys.argv[1] == "--project-job":
         project_worker(session_id(sys.argv[2]), int(sys.argv[3]))
         return
