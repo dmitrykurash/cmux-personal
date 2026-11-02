@@ -91,6 +91,13 @@ class BridgeTests(unittest.TestCase):
                 bridge.send(self.sid, text)
         self.assertEqual(bridge.read_status(self.sid), "busy")
 
+    def test_usage_opens_cli_screen_instead_of_waiting_for_assistant_reply(self):
+        bridge.set_status(self.sid, "ready")
+        with patch.object(bridge, "alive", return_value=True), patch.object(bridge, "tmux"):
+            result = bridge.send(self.sid, "/usage")
+        self.assertEqual(bridge.read_status(self.sid), "console", "A CLI screen never emits a normal assistant Stop event")
+        self.assertEqual(result.get("consoleCommand"), "/usage")
+
     def test_uncertain_send_requires_terminal_and_never_auto_retries(self):
         bridge.set_status(self.sid, "ready")
         with patch.object(bridge, "alive", return_value=True), patch.object(bridge, "tmux", side_effect=RuntimeError("failed")) as run:

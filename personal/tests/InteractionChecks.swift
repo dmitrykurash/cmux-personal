@@ -6,8 +6,9 @@ private actor InteractionService: PersonalChatServing {
     private var sending = false
     var sentTexts: [String] = []
     var operations: [String] = []
+    let localCommand: Bool
     let failSend: Bool
-    init(failSend: Bool = false) { self.failSend = failSend }
+    init(failSend: Bool = false, localCommand: Bool = false) { self.failSend = failSend; self.localCommand = localCommand }
     func setMessages(_ messages: [PersonalChatMessage]) { replyMessages = messages }
     var replyMessages: [PersonalChatMessage] = []
 
@@ -23,7 +24,7 @@ private actor InteractionService: PersonalChatServing {
                 sendWaiter = nil
             }
         }
-        return PersonalChatReply(ok: true, messages: replyMessages, phase: "ready")
+        return PersonalChatReply(ok: true, messages: replyMessages, phase: localCommand ? "console" : "ready")
     }
     func waitForSend() async {
         if sending { return }
@@ -64,6 +65,16 @@ struct InteractionChecks {
         model.finishReveal("server-assistant")
         await model.refresh()
         precondition(model.revealingMessageIDs.isEmpty, "Polling must not replay the reveal")
+
+        let commandService = InteractionService(localCommand: true)
+        let commandModel = PersonalChatModel(service: commandService, repository: PersonalChatRepository(file: folder.appendingPathComponent("command.json")))
+        commandModel.projects = [project]; commandModel.projectID = project.id; commandModel.selectedID = UUID().uuidString
+        commandModel.connected = true; commandModel.phase = "ready"; commandModel.draft = "/usage"
+        let commandTask = Task { await commandModel.send() }
+        await commandService.waitForSend(); await commandService.completeSend(); await commandTask.value
+        commandModel.stopRefresh(); await commandModel.refresh()
+        precondition(commandModel.pendingSend == nil && commandModel.activityText == nil, "A local CLI screen must not wait forever for a chat transcript or show Claude working")
+        commandModel.stopRefresh()
 
         let failingService = InteractionService(failSend: true)
         let failing = PersonalChatModel(service: failingService, repository: PersonalChatRepository(file: folder.appendingPathComponent("failure.json")))
