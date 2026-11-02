@@ -16,6 +16,7 @@ struct PersonalChatReply: Decodable, Sendable {
     var sessions: [PersonalChatSession]?
     var messages: [PersonalChatMessage]?
     var phase: String?
+    var consoleCommand: String?
     var live: Bool?
     var count: Int?
     var githubLogin: PersonalChatGitHubState?

@@ -18,7 +18,12 @@ private actor UIService: PersonalChatServing {
         case "github_cancel": return .init(ok: true, githubLogin: .init(phase: "cancelled"))
         case "health": return PersonalChatReply(ok: true, user: "developer", claude: true, tmux: true)
         case "list": return PersonalChatReply(ok: true, sessions: Self.sessions)
+        case "console_return": phase = "ready"
         case "send":
+            if request.text == "/usage" {
+                phase = "console"
+                return .init(ok: true, phase: phase, consoleCommand: "/usage")
+            }
             messages = [.init(id: "user", role: "user", text: request.text ?? "")]
             phase = "busy"
             await withCheckedContinuation { gate = $0 }

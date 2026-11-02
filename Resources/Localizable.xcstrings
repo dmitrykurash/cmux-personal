@@ -681170,6 +681170,65 @@
           }
         }
       }
+    },
+    "personal.console.commandHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Press Esc to close the CLI screen, then return to chat."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اضغط على Esc لإغلاق شاشة واجهة الأوامر، ثم عد إلى المحادثة."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drücke Esc, um die CLI-Ansicht zu schließen, und kehre dann zum Chat zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pulsa Esc para cerrar la pantalla de la CLI y vuelve al chat."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appuyez sur Échap pour fermer l’écran CLI, puis revenez au chat."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "EscキーでCLI画面を閉じてから、チャットに戻ってください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esc를 눌러 CLI 화면을 닫은 다음 채팅으로 돌아오세요."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按 Esc 关闭 CLI 界面，然后返回聊天。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按 Esc 關閉 CLI 畫面，然後返回聊天。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -73,6 +73,7 @@ struct InteractionChecks {
         let commandTask = Task { await commandModel.send() }
         await commandService.waitForSend(); await commandService.completeSend(); await commandTask.value
         commandModel.stopRefresh(); await commandModel.refresh()
+        precondition(commandModel.consolePresentationID != nil, "The acknowledged slash command opens its existing CLI screen automatically")
         precondition(commandModel.pendingSend == nil && commandModel.activityText == nil, "A local CLI screen must not wait forever for a chat transcript or show Claude working")
         commandModel.stopRefresh()
 

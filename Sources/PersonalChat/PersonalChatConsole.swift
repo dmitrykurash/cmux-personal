@@ -7,6 +7,7 @@ import SwiftUI
 struct PersonalChatConsoleRequest: Identifiable {
     let id = UUID()
     let command: String // Constructed only by PersonalChatConnection, never remote output.
+    var cliCommand: String? = nil
 }
 
 struct PersonalChatConsoleSheet: View {
@@ -27,8 +28,8 @@ struct PersonalChatConsoleSheet: View {
             HStack(spacing: 12) {
                 Image(systemName: "terminal").foregroundStyle(palette.secondary)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(String(localized: "personal.console.title", defaultValue: "Remote console", bundle: PersonalChatStrings.bundle)).font(PersonalChatTypography.body(14, weight: .medium))
-                    Text(ended ? String(localized: "personal.console.ended", defaultValue: "Console disconnected. Your saved chat is still available.", bundle: PersonalChatStrings.bundle) : String(localized: "personal.console.note", defaultValue: "Your live VPS session. Closing this panel keeps Claude running.", bundle: PersonalChatStrings.bundle))
+                    Text(request.cliCommand ?? String(localized: "personal.console.title", defaultValue: "Remote console", bundle: PersonalChatStrings.bundle)).font(PersonalChatTypography.body(14, weight: .medium))
+                    Text(ended ? String(localized: "personal.console.ended", defaultValue: "Console disconnected. Your saved chat is still available.", bundle: PersonalChatStrings.bundle) : request.cliCommand != nil ? String(localized: "personal.console.commandHint", defaultValue: "Press Esc to close the CLI screen, then return to chat.", bundle: PersonalChatStrings.bundle) : String(localized: "personal.console.note", defaultValue: "Your live VPS session. Closing this panel keeps Claude running.", bundle: PersonalChatStrings.bundle))
                         .font(PersonalChatTypography.body(11)).foregroundStyle(palette.muted)
                 }
                 Spacer()

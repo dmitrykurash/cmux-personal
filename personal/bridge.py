@@ -465,6 +465,63 @@ def upload(sid, name, encoded):
     return {"path": str(path)}
 
 
+# Built-in CLI UI/output commands do not run a normal assistant turn. Custom
+# skills (and /compact, /review, etc.) retain the normal chat/hook lifecycle.
+CONSOLE_COMMANDS = frozenset(('/usage', '/mcp', '/status', '/help', '/model', '/config',
+                              '/permissions', '/stats', '/cost', '/context', '/theme',
+                              '/doctor', '/login', '/logout', '/plugins', '/plugin', '/agents'))
+
+
+def console_command(text):
+    value = text.strip()
+    if "\n" in value or not value:
+        return None
+    command = value.split()[0]
+    return command if command in CONSOLE_COMMANDS else None
+
+
+def console_state(sid):
+    try:
+        value = json.loads((ROOT / (session_id(sid) + ".status")).read_text())
+        return value if value.get('phase') == 'console' and value.get('consoleCommand') in CONSOLE_COMMANDS else None
+    except (OSError, ValueError):
+        return None
+
+
+def console_prompt_is_idle(screen, cursor):
+    # Fail closed on a different CLI layout. Only the empty main input framed by
+    # its two rules counts; permission options, drafts and hidden cursors do not.
+    try:
+        row, column, visible = map(int, cursor.strip().split(','))
+    except ValueError:
+        return False
+    lines = screen.splitlines()
+    if visible != 1 or column != 2 or not 0 < row < len(lines) - 1 or lines[row].strip() != '❯':
+        return False
+    if any(not re.fullmatch(r'[─━]{8,}', lines[index].strip()) for index in (row - 1, row + 1)):
+        return False
+    return not any(label in screen.lower() for label in ('esc to interrupt', 'escape to interrupt'))
+
+
+def reconcile_console(sid, returning=False):
+    with lifecycle_lock(), session_lock(sid):
+        metadata(sid)
+        before = console_state(sid)
+        if before is None:
+            return
+        if returning:
+            before['returned'] = True
+            atomic_json(ROOT / (sid + '.status'), before)
+        if not before.get('returned'):
+            return
+        screen = tmux('capture-pane', '-p', '-t', target(sid) + ':').stdout.decode(errors='replace')
+        cursor = tmux('display-message', '-p', '-t', target(sid) + ':', '#{cursor_y},#{cursor_x},#{cursor_flag}').stdout.decode(errors='replace')
+        # A prompt submitted in the console clears this marker through its hook.
+        # Never overwrite a newer busy/permission/ended state.
+        if console_state(sid) == before and console_prompt_is_idle(screen, cursor):
+            set_status(sid, 'ready')
+
+
 def send(sid, text, approval_ui=False):
     if not text.strip() or len(text.encode()) > 128 * 1024:
         raise ValueError("Message is empty or too large")
@@ -476,7 +533,11 @@ def send(sid, text, approval_ui=False):
             raise ValueError("Claude is not ready. Resolve prompts in the terminal first.")
         if approval_ui:
             atomic_json(ROOT / (sid + ".ui.json"), {"time": time.time()})
-        set_status(sid, "busy")  # Reserve before injecting; never retry automatically.
+        command = console_command(text)
+        if command:
+            atomic_json(ROOT / (sid + '.status'), {'phase': 'console', 'consoleCommand': command, 'time': time.time()})
+        else:
+            set_status(sid, "busy")  # Reserve before injecting; never retry automatically.
         buffer = "cmp-" + uuid.uuid4().hex
         try:
             tmux("load-buffer", "-b", buffer, "-", input=text.encode())
@@ -485,7 +546,7 @@ def send(sid, text, approval_ui=False):
         except Exception:
             set_status(sid, "attention")  # Delivery may have happened. Never auto-resend.
             raise
-    return {"sent": True}
+    return {"sent": True, "phase": "console" if command else "busy", "consoleCommand": command}
 
 
 class ProjectError(ValueError):
@@ -1079,6 +1140,13 @@ def dispatch(request):
         return {"installed": True}
     if op == "list":
         return {"sessions": list_sessions(project_path(request["project"]))}
+    if op == "console_return":
+        sid = session_id(request['id'])
+        if metadata(sid)['project'] != str(project_path(request['project'])):
+            raise ValueError('Session belongs to another project')
+        if alive(sid):
+            reconcile_console(sid, returning=True)
+        return {'phase': read_status(sid) if alive(sid) else 'offline'}
     if op == "permission_decide":
         return decide_permission(request)
     if op == "permission_handoff":
@@ -1101,7 +1169,10 @@ def dispatch(request):
                     if not (ROOT / "deleted" / sid).exists():
                         atomic_json(ROOT / (sid + ".ui.json"), {"time": time.time()})
                         approvals = pending_permissions(sid, project)
-        return {"messages": messages(transcript(sid, project)), "phase": "permission" if approvals else read_status(sid) if live and managed else "offline", "live": live and managed, "approvals": approvals}
+        if live and managed and console_state(sid):
+            reconcile_console(sid)
+        command = console_state(sid) if live and managed else None
+        return {"consoleCommand": command['consoleCommand'] if command else None, "messages": messages(transcript(sid, project)), "phase": "permission" if approvals else read_status(sid) if live and managed else "offline", "live": live and managed, "approvals": approvals}
     if op == "upload":
         with lifecycle_lock():
             return upload(sid, request["name"], request["data"])
@@ -1126,7 +1197,9 @@ def hook(sid, event):
     # idle_prompt also fires for questions/pickers: it must not enable the composer.
     if phase:
         private_dir(ROOT)
-        set_status(sid, phase)
+        with session_lock(sid):
+            if not (ROOT / "deleted" / sid).exists():
+                set_status(sid, phase)
     if name == "PermissionRequest":
         return request_permission(sid, event)
 

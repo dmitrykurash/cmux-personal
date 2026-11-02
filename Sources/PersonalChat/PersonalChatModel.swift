@@ -21,6 +21,8 @@ final class PersonalChatModel {
     private var remoteMessageIDs: Set<String> = []
     private var transcriptLoaded = false
     private var awaitingReply = false
+    private(set) var consoleCommand: String?
+    var consolePresentationID: UUID?
     var draft = ""
     var attachments: [URL] = []
     var phase = "offline"
@@ -69,7 +71,7 @@ final class PersonalChatModel {
     }
 
     var activityText: String? {
-        if !approvals.isEmpty { return nil }
+        if !approvals.isEmpty || (phase == "console" && pendingSend?.state != "uncertain") { return nil }
         if let pendingSend {
             if pendingSend.state == "uncertain" { return String(localized: "personal.delivery.uncertain", defaultValue: "Delivery unconfirmed. Check the terminal before sending again.", bundle: PersonalChatStrings.bundle) }
             if pendingSend.state == "sending" {
@@ -107,6 +109,8 @@ final class PersonalChatModel {
         remoteMessageIDs = []
         transcriptLoaded = false
         awaitingReply = false
+        consoleCommand = nil
+        consolePresentationID = nil
     }
 
     func load() async {
@@ -279,6 +283,12 @@ final class PersonalChatModel {
             messages = received
             if let pendingSend { messages.append(pendingSend.message) }
             phase = result.phase ?? "offline"
+            consoleCommand = result.consoleCommand
+            if phase == "console", pendingSend?.state == "sent" {
+                messages.removeAll { $0.id == pendingSend?.message.id }
+                pendingSend = nil
+                awaitingReply = false
+            }
             if pendingSend == nil && phase != "busy" { awaitingReply = false }
             if pendingSend?.state == "sent" && phase == "ready" { phase = "busy" }
             if let first = messages.first(where: { $0.role == "user" }), let index = sessions.firstIndex(where: { $0.id == id }) {
@@ -334,7 +344,19 @@ final class PersonalChatModel {
         }
     }
 
-    func resumeNativeApprovals() { nativeApprovalsEnabled = true; startRefresh() }
+    func resumeNativeApprovals() async {
+        nativeApprovalsEnabled = true
+        guard connected, !busy, let id = selectedID, let project else { startRefresh(); return }
+        let generation = selectionGeneration
+        if phase == "console" {
+            do {
+                _ = try await service.request(.init(op: "console_return", id: id, project: project.path), connection: connection)
+            } catch {
+                if generation == selectionGeneration { self.error = error.localizedDescription }
+            }
+        }
+        if generation == selectionGeneration { startRefresh() }
+    }
 
     func releaseApprovalsToTerminal() async -> Bool {
         guard connected, !busy, let id = selectedID, let project else { return false }
@@ -384,8 +406,17 @@ final class PersonalChatModel {
             }
             pendingSend?.wireText = text
             deliveryAttempted = true
-            _ = try await service.request(.init(op: "send", id: id, text: text, approvalUI: true), connection: connection)
-            pendingSend?.state = "sent"
+            let reply = try await service.request(.init(op: "send", id: id, text: text, approvalUI: true), connection: connection)
+            if reply.phase == "console" {
+                messages.removeAll { $0.id == echo.id }
+                pendingSend = nil
+                awaitingReply = false
+                phase = "console"
+                consoleCommand = reply.consoleCommand
+                consolePresentationID = UUID()
+            } else {
+                pendingSend?.state = "sent"
+            }
             error = nil
         } catch {
             self.error = error.localizedDescription

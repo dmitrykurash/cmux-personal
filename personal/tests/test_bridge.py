@@ -98,6 +98,37 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(bridge.read_status(self.sid), "console", "A CLI screen never emits a normal assistant Stop event")
         self.assertEqual(result.get("consoleCommand"), "/usage")
 
+    def test_console_return_checks_actual_main_prompt_without_sending_keys(self):
+        screen = "old output\n────────────────\n❯\u00a0\n────────────────\n  ? for shortcuts\n"
+        def capture(*args, **kwargs):
+            return subprocess.CompletedProcess(args, 0, (screen if args[0] == 'capture-pane' else '2,2,1').encode(), b'')
+        with patch.object(bridge, 'alive', return_value=True), patch.object(bridge, 'tmux'):
+            bridge.set_status(self.sid, 'ready'); bridge.send(self.sid, '/usage')
+        with patch.object(bridge, 'tmux', side_effect=capture) as run:
+            bridge.reconcile_console(self.sid)
+            self.assertEqual(bridge.read_status(self.sid), 'console', 'No readiness guess before returning from the screen')
+            run.assert_not_called()
+            bridge.reconcile_console(self.sid, returning=True)
+            self.assertEqual(bridge.read_status(self.sid), 'ready')
+            self.assertTrue(all(call.args[0] in ('capture-pane', 'display-message') for call in run.call_args_list))
+        for changed, cursor in [(screen.replace('❯\u00a0', '❯ 1. Yes'), '2,2,1'), (screen.replace('❯\u00a0', '❯ draft'), '2,2,1'), (screen, '2,2,0'), (screen+'esc to interrupt', '2,2,1'), ('new unknown layout', '0,0,1')]:
+            self.assertFalse(bridge.console_prompt_is_idle(changed, cursor), 'Never treat a permission, draft, busy prompt or unknown layout as ready')
+
+    def test_new_turn_or_permission_cannot_be_reset_by_console_return(self):
+        for phase in ['busy', 'permission', 'offline']:
+            bridge.set_status(self.sid, phase)
+            with patch.object(bridge, 'tmux') as run:
+                bridge.reconcile_console(self.sid, returning=True)
+                run.assert_not_called()
+            self.assertEqual(bridge.read_status(self.sid), phase)
+        for prompt in ['/my-skill inspect this', '/compact', '/review', 'Explain /usage', '/usage\nExplain this']:
+            bridge.set_status(self.sid, 'ready')
+            with patch.object(bridge, 'alive', return_value=True), patch.object(bridge, 'tmux'):
+                self.assertIsNone(bridge.send(self.sid, prompt).get('consoleCommand'))
+            self.assertEqual(bridge.read_status(self.sid), 'busy')
+        with patch.object(bridge, 'alive', return_value=True), self.assertRaises(ValueError):
+            bridge.dispatch({'op': 'console_return', 'id': self.sid, 'project': str(self.root)})
+
     def test_uncertain_send_requires_terminal_and_never_auto_retries(self):
         bridge.set_status(self.sid, "ready")
         with patch.object(bridge, "alive", return_value=True), patch.object(bridge, "tmux", side_effect=RuntimeError("failed")) as run:

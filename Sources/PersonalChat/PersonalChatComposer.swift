@@ -119,6 +119,14 @@ struct PersonalChatComposer: View {
             if model.phase == "busy" || model.busy {
                 ProgressView().controlSize(.mini)
                 Text(String(localized: "personal.working", defaultValue: "Claude is working…", bundle: PersonalChatStrings.bundle))
+            } else if model.phase == "console" {
+                Image(systemName: "terminal")
+                Text(model.consoleCommand ?? String(localized: "personal.console.title", defaultValue: "Remote console", bundle: PersonalChatStrings.bundle))
+                Spacer()
+                Button(String(localized: "personal.console.done", defaultValue: "Back to chat", bundle: PersonalChatStrings.bundle)) { Task { await model.resumeNativeApprovals() } }
+                Button(action: openTerminal) { Image(systemName: "arrow.up.right") }
+                    .help(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
+                    .accessibilityLabel(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
             } else if model.phase == "offline" {
                 Image(systemName: "clock.arrow.circlepath")
                 Text(String(localized: "personal.saved", defaultValue: "Saved conversation", bundle: PersonalChatStrings.bundle))

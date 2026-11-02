@@ -66,6 +66,17 @@ output, including password entry, are not stored by CheatCode. Normal CLI histor
 and server-side behavior remain governed by the CLI. SwiftTerm is MIT-licensed;
 its revision and dependency resolutions are pinned, and its license is bundled.
 
+## Built-in slash commands (0.7.1)
+
+`/usage` and other built-in CLI screens open the in-app console automatically.
+They are acknowledged as commands, without waiting for an assistant transcript or
+showing an endless working indicator. Press Esc to close the CLI screen, then
+**Back to chat**. Returning checks the actual empty CLI prompt before enabling
+normal chat input; permission dialogs, drafts and unknown layouts stay blocked.
+Custom skills and model-driven commands retain their normal chat/hook lifecycle.
+Full cmux users can also use **Back to chat** in the chat status row after closing
+the CLI screen. No keys or permissions are sent by this readiness check.
+
 ## GitHub sign-in (0.7)
 
 Use **GitHub** in the chat header, or **Sign in to GitHub…** when adding a repository.

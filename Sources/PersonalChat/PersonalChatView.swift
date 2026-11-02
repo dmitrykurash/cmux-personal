@@ -52,8 +52,14 @@ struct PersonalChatView: View {
             })
         }
         .sheet(isPresented: $showingGitHub) { PersonalChatGitHubView(model: model.makeGitHub()) }
-        .sheet(item: $consoleRequest, onDismiss: { model.resumeNativeApprovals() }) { request in
+        .sheet(item: $consoleRequest, onDismiss: { Task { await model.resumeNativeApprovals() } }) { request in
             PersonalChatConsoleSheet(request: request)
+        }
+        .onChange(of: model.consolePresentationID) {
+            if model.consolePresentationID != nil {
+                model.consolePresentationID = nil
+                showTerminal()
+            }
         }
         .onChange(of: search) { sidebarState.resetPages() }
         .alert(String(localized: "personal.attention", defaultValue: "Needs attention", bundle: PersonalChatStrings.bundle), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
@@ -377,7 +383,7 @@ struct PersonalChatView: View {
             guard await model.releaseApprovalsToTerminal(), model.selectedID == id else { return }
             do {
                 let command = try model.connection.terminalCommand(sessionID: id)
-                if PersonalChatConsoleSheet.supported { consoleRequest = .init(command: command) }
+                if PersonalChatConsoleSheet.supported { consoleRequest = .init(command: command, cliCommand: model.consoleCommand) }
                 else { openTerminal(command) }
             }
             catch { model.error = error.localizedDescription }
