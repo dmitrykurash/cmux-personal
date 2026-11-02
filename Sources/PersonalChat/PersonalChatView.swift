@@ -12,6 +12,7 @@ struct PersonalChatView: View {
     @State private var sidebarState = PersonalChatSidebarState()
     @State private var deletionTarget: PersonalChatDeletionTarget?
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
+    private var isConversationEmpty: Bool { model.messages.isEmpty && model.approvals.isEmpty }
     private var newChatLabel: String { String(localized: "personal.new", defaultValue: "New chat", bundle: PersonalChatStrings.bundle) }
     private var motion: Animation? { reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.3) }
 
@@ -245,7 +246,7 @@ struct PersonalChatView: View {
         VStack(spacing: 0) {
             header
             VStack(spacing: 0) {
-                if model.messages.isEmpty {
+                if isConversationEmpty {
                     Spacer(minLength: 20)
                     PersonalChatWelcomeHeading().padding(.horizontal, 24).padding(.bottom, 36)
                     if !model.connected || model.project == nil { setupCard.padding(.bottom, 12) }
@@ -254,16 +255,16 @@ struct PersonalChatView: View {
                 }
                 PersonalChatComposer(model: model, openTerminal: showTerminal)
                     .frame(maxWidth: 760).padding(.horizontal, 24)
-                    .padding(.top, model.messages.isEmpty ? 0 : 12).padding(.bottom, model.messages.isEmpty ? 0 : 14)
+                    .padding(.top, isConversationEmpty ? 0 : 12).padding(.bottom, isConversationEmpty ? 0 : 14)
                     .frame(maxWidth: .infinity)
-                if model.messages.isEmpty { Spacer(minLength: 20) }
+                if isConversationEmpty { Spacer(minLength: 20) }
             }
-            .animation(reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.38), value: model.messages.isEmpty)
+            .animation(reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.38), value: isConversationEmpty)
         }
         .background {
             ZStack {
                 palette.stage
-                if model.messages.isEmpty { PersonalChatBackdrop().transition(.opacity) }
+                if isConversationEmpty { PersonalChatBackdrop().transition(.opacity) }
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -327,6 +328,15 @@ struct PersonalChatView: View {
                     ForEach(model.messages) { message in
                         PersonalChatMessageView(message: message, animate: model.revealingMessageIDs.contains(message.id)) { model.finishReveal(message.id) }
                     }
+                    ForEach(model.approvals) { approval in
+                        PersonalChatApprovalView(approval: approval, disabled: model.busy || !model.connected, decide: { decision in
+                            Task { await model.decideApproval(approval, decision: decision) }
+                        }, openTerminal: showTerminal)
+                        .transition(.opacity)
+                    }
+                    if let approvalError = model.approvalError {
+                        Text(approvalError).font(PersonalChatTypography.body(12)).foregroundStyle(palette.secondary)
+                    }
                     if let activity = model.activityText {
                         HStack(spacing: 10) {
                             if model.pendingSend?.state != "uncertain" { ProgressView().controlSize(.small) }
@@ -340,9 +350,13 @@ struct PersonalChatView: View {
                     Color.clear.frame(height: 1).id("end")
                 }.frame(maxWidth: 760).padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 8)
                     .frame(maxWidth: .infinity)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.approvals.map(\.id))
             }
             .onAppear { proxy.scrollTo("end", anchor: .bottom) }
             .onChange(of: model.messages.last?.text) {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("end", anchor: .bottom) }
+            }
+            .onChange(of: model.approvals.map(\.id)) {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("end", anchor: .bottom) }
             }
         }
@@ -350,7 +364,10 @@ struct PersonalChatView: View {
 
     private func showTerminal() {
         guard let id = model.selectedID else { return }
-        do { openTerminal(try model.connection.terminalCommand(sessionID: id)) }
-        catch { model.error = error.localizedDescription }
+        Task {
+            guard await model.releaseApprovalsToTerminal(), model.selectedID == id else { return }
+            do { openTerminal(try model.connection.terminalCommand(sessionID: id)) }
+            catch { model.error = error.localizedDescription }
+        }
     }
 }

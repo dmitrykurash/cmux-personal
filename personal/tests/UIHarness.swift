@@ -6,6 +6,7 @@ private actor UIService: PersonalChatServing {
     private var gate: CheckedContinuation<Void, Never>?
     private var messages: [PersonalChatMessage] = []
     private var phase = "ready"
+    private var approvals: [PersonalChatApproval] = []
     static let sessions = (1...43).map { PersonalChatSession(id: String(format: "00000000-0000-4000-8000-%012d", $0), title: "Fixture chat \($0)", updated: Double(44 - $0)) }
     func request(_ request: PersonalChatRequest, connection: PersonalChatConnection) async throws -> PersonalChatReply {
         switch request.op {
@@ -15,11 +16,21 @@ private actor UIService: PersonalChatServing {
             messages = [.init(id: "user", role: "user", text: request.text ?? "")]
             phase = "busy"
             await withCheckedContinuation { gate = $0 }
+        case "permission_handoff": approvals = []; phase = "permission"
+        case "permission_decide":
+            approvals.removeAll { $0.id == request.approvalID }
+            messages.append(.init(id: UUID().uuidString, role: "assistant", text: request.decision == "allow" ? "The command was approved once." : "The command was declined."))
+            phase = "ready"
         case "deletion_prepare": return PersonalChatReply(ok: true, id: UUID().uuidString, path: request.project, count: 43)
         case "deletion_commit": return PersonalChatReply(ok: true, phase: "done")
         default: break
         }
-        return PersonalChatReply(ok: true, messages: messages, phase: phase)
+        return PersonalChatReply(ok: true, messages: messages, phase: phase, approvals: approvals)
+    }
+    func showApproval() {
+        messages = [.init(id: "permission-user", role: "user", text: "Check the installed GitHub CLI version.")]
+        approvals = [.init(id: UUID().uuidString, sessionID: Self.sessions[0].id, project: "/home/developer/projects/ui-fixture", tool: "Bash", detail: "{\n  \"command\": \"gh --version\",\n  \"description\": \"Check the installed GitHub CLI version\"\n}", expires: Date().timeIntervalSince1970 + 540)]
+        phase = "permission"
     }
     func release() {
         messages.append(.init(id: "assistant", role: "assistant", text: "Your message appeared immediately. This response is revealed smoothly after the server reply arrives, using the real chat view and the same message reconciliation code."))
@@ -46,7 +57,10 @@ struct UIHarness: App {
     var body: some Scene {
         WindowGroup("CheatCode UI Check") {
             VStack(spacing: 0) {
-                Button("Release fixture reply") { Task { await service.release() } }.padding(12)
+                HStack {
+                    Button("Release fixture reply") { Task { await service.release() } }
+                    Button("Show permission request") { Task { await service.showApproval(); await model.refresh() } }
+                }.padding(12)
                 PersonalChatView(model: model, openTerminal: { _ in })
             }
         }.defaultSize(width: 1200, height: 850)

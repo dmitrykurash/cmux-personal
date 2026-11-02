@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import shlex
 import signal
+import socket
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,8 @@ ROOT = Path.home() / ".local/share/cmux-personal"
 TRANSCRIPTS = Path.home() / ".claude/projects"
 MAX_ATTACHMENT = 20 * 1024 * 1024
 MAX_TRANSCRIPT = 32 * 1024 * 1024
+UI_LEASE_SECONDS = 15
+PERMISSION_SECONDS = 540
 
 
 def private_dir(path):
@@ -88,6 +91,181 @@ def read_status(sid):
 
 def set_status(sid, phase):
     atomic_json(ROOT / (session_id(sid) + ".status"), {"phase": phase, "time": time.time()})
+
+
+def ui_lease(sid):
+    try:
+        return json.loads((ROOT / (sid + ".ui.json")).read_text())["time"] + UI_LEASE_SECONDS
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0
+
+
+def permission_paths(rid):
+    # Short names keep Unix socket paths below the platform limit.
+    stem = uuid.UUID(rid).hex
+    folder = private_dir(ROOT / "p")
+    return folder / (stem + ".json"), folder / (stem + ".sock")
+
+
+def pending_permissions(sid, project):
+    result = []
+    for path in (ROOT / "p").glob("*.json"):
+        try:
+            if path.is_symlink() or path.stat().st_size > 160 * 1024:
+                continue
+            value = json.loads(path.read_text())
+            if value["sessionID"] != sid or value["project"] != str(project) or value["expires"] <= time.time():
+                continue
+            _, sock = permission_paths(value["id"])
+            if not sock.exists() or ui_lease(sid) <= time.time():
+                continue
+            result.append(value)
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return sorted(result, key=lambda value: value["expires"])
+
+
+def permission_frame(stream):
+    data = bytearray()
+    while len(data) <= 2048:
+        chunk = stream.recv(2049 - len(data))
+        if not chunk:
+            raise ValueError("Approval connection closed")
+        data.extend(chunk)
+        if b"\n" in data:
+            return json.loads(data.split(b"\n", 1)[0])
+    raise ValueError("Approval response is too large")
+
+
+def request_permission(sid, event):
+    # Interactive questions, trust, passwords and oversized inputs keep the CLI UI.
+    if event.get("tool_name") in (None, "AskUserQuestion", "ExitPlanMode") or not isinstance(event.get("tool_input"), dict):
+        return None
+    if event.get("session_id") != sid or ui_lease(sid) <= time.time():
+        return None
+    project = project_path(event.get("cwd"))
+    if metadata(sid)["project"] != str(project):
+        return None
+    detail = json.dumps(event["tool_input"], ensure_ascii=False, indent=2)
+    if len(detail.encode()) > 128 * 1024:
+        return None
+    rid = str(uuid.uuid4())
+    path, socket_path = permission_paths(rid)
+    expires = time.time() + PERMISSION_SECONDS
+    value = {"id": rid, "sessionID": sid, "project": str(project),
+             "tool": str(event["tool_name"]), "detail": detail, "expires": expires}
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+            server.bind(str(socket_path))
+            socket_path.chmod(0o600)
+            server.listen(4)
+            with lifecycle_lock():
+                if (ROOT / "deleted" / sid).exists():
+                    return None
+                atomic_json(path, value)
+            while True:
+                # Wait for a decision or the current desktop lease to expire.
+                # Closing the app or switching away returns control to the CLI.
+                remaining = min(expires, ui_lease(sid)) - time.time()
+                if remaining <= 0 or (ROOT / "deleted" / sid).exists():
+                    return None
+                server.settimeout(remaining)
+                try:
+                    stream, _ = server.accept()
+                except socket.timeout:
+                    continue  # Re-evaluate the lease renewed by a UI read.
+                with stream:
+                    stream.settimeout(min(2, remaining))
+                    try:
+                        answer = permission_frame(stream)
+                        if answer.get("id") != rid or answer.get("sessionID") != sid or answer.get("decision") not in ("allow", "deny", "terminal"):
+                            stream.sendall(b'{"accepted":false}\n')
+                            continue
+                        if min(expires, ui_lease(sid)) <= time.time() or (ROOT / "deleted" / sid).exists():
+                            return None
+                        decision = answer["decision"]
+                        # Consume before acknowledging. A duplicate/stale card can
+                        # never answer another request, including after reconnect.
+                        path.unlink(missing_ok=True)
+                        if decision != "terminal":
+                            set_status(sid, "busy")
+                        try:
+                            stream.sendall(b'{"accepted":true}\n')
+                        except OSError:
+                            pass  # The decision arrived; never ask the UI to resend it.
+                        if decision == "terminal":
+                            return None
+                        output = {"behavior": decision}
+                        if decision == "deny":
+                            output["message"] = "The user declined this request in CheatCode."
+                        return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": output}}
+                    except (OSError, ValueError, TypeError):
+                        continue
+    finally:
+        path.unlink(missing_ok=True)
+        socket_path.unlink(missing_ok=True)
+
+
+def decide_permission(request):
+    sid = session_id(request["id"])
+    project = project_path(request["project"])
+    rid = session_id(request["approvalID"])
+    decision = request.get("decision")
+    if decision not in ("allow", "deny", "terminal"):
+        raise ValueError("Invalid approval decision")
+    with lifecycle_lock():
+        if (ROOT / "deleted" / sid).exists() or metadata(sid)["project"] != str(project) or not alive(sid):
+            raise ValueError("This permission request is no longer active")
+        if not any(value["id"] == rid for value in pending_permissions(sid, project)):
+            raise ValueError("This permission request expired or was already answered")
+        _, socket_path = permission_paths(rid)
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
+                stream.settimeout(3)
+                stream.connect(str(socket_path))
+                stream.sendall((json.dumps({"id": rid, "sessionID": sid, "decision": decision}) + "\n").encode())
+                if permission_frame(stream).get("accepted") is not True:
+                    raise ValueError("This permission request is no longer active")
+        except OSError:
+            raise ValueError("Approval delivery could not be confirmed. Refresh before trying again.") from None
+    return {"id": rid}
+
+
+def remove_permission_state(sid):
+    (ROOT / (sid + ".ui.json")).unlink(missing_ok=True)
+    for path in (ROOT / "p").glob("*.json"):
+        try:
+            if path.is_symlink() or path.stat().st_size > 160 * 1024:
+                continue
+            value = json.loads(path.read_text())
+        except FileNotFoundError:
+            continue  # The hook can finish and remove its file concurrently.
+        if value.get("sessionID") == sid:
+            expected, sock = permission_paths(value["id"])
+            if expected == path:
+                path.unlink(missing_ok=True)
+                sock.unlink(missing_ok=True)
+
+
+def handoff_permissions(request):
+    sid = session_id(request["id"])
+    project = project_path(request["project"])
+    with lifecycle_lock():
+        if metadata(sid)["project"] != str(project) or (ROOT / "deleted" / sid).exists():
+            raise ValueError("Session belongs to another project or was deleted")
+        pending = pending_permissions(sid, project)
+        # Revoke first, so requests arriving during this handoff also use the CLI.
+        atomic_json(ROOT / (sid + ".ui.json"), {"time": 0})
+        for value in pending:
+            _, sock = permission_paths(value["id"])
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
+                    stream.settimeout(1)
+                    stream.connect(str(sock))
+                    stream.sendall(b'{}\n')  # Wake the hook to observe the revoked lease.
+            except OSError:
+                pass  # An already-finished hook needs no handoff.
+    return {"id": sid}
 
 
 @contextlib.contextmanager
@@ -203,6 +381,7 @@ def start(sid, project, resume):
         hook_command = "python3 " + shlex.quote(str(ROOT / "bridge.py")) + " --hook " + shlex.quote(sid)
         hooks = {event: [{"matcher": "", "hooks": [{"type": "command", "command": hook_command}]}]
                  for event in ("SessionStart", "UserPromptSubmit", "Stop", "PermissionRequest", "Notification", "SessionEnd")}
+        hooks["PermissionRequest"][0]["hooks"][0]["timeout"] = 600
         settings = ROOT / (sid + ".settings.json")
         atomic_json(settings, {"hooks": hooks})
         command = "exec " + shlex.join([claude, "--resume" if resume else "--session-id", sid,
@@ -233,7 +412,7 @@ def upload(sid, name, encoded):
     return {"path": str(path)}
 
 
-def send(sid, text):
+def send(sid, text, approval_ui=False):
     if not text.strip() or len(text.encode()) > 128 * 1024:
         raise ValueError("Message is empty or too large")
     if any(ord(c) < 32 and c not in "\n\t" for c in text) or "\x7f" in text:
@@ -242,6 +421,8 @@ def send(sid, text):
         metadata(sid)
         if not alive(sid) or read_status(sid) != "ready":
             raise ValueError("Claude is not ready. Resolve prompts in the terminal first.")
+        if approval_ui:
+            atomic_json(ROOT / (sid + ".ui.json"), {"time": time.time()})
         set_status(sid, "busy")  # Reserve before injecting; never retry automatically.
         buffer = "cmp-" + uuid.uuid4().hex
         try:
@@ -632,6 +813,7 @@ def commit_deletion(request):
                 if owner != project and not (plan['mode'] == 'project' and project in owner.parents):
                     raise ValueError('Session belongs to another project')
                 tmux('kill-session', '-t', target(sid))
+            remove_permission_state(sid)
         for item in plan['items']:
             path = Path(item['path'])
             if not path.exists() and not path.is_symlink():
@@ -674,6 +856,10 @@ def dispatch(request):
         return {"installed": True}
     if op == "list":
         return {"sessions": list_sessions(project_path(request["project"]))}
+    if op == "permission_decide":
+        return decide_permission(request)
+    if op == "permission_handoff":
+        return handoff_permissions(request)
     sid = session_id(request["id"])
     if op == "start":
         return start(sid, project_path(request["project"]), bool(request.get("resume")))
@@ -684,12 +870,20 @@ def dispatch(request):
         managed = (ROOT / (sid + ".json")).exists()
         if managed and metadata(sid)["project"] != str(project):
             raise ValueError("Session belongs to another project")
-        return {"messages": messages(transcript(sid, project)), "phase": read_status(sid) if live and managed else "offline", "live": live and managed}
+        approvals = []
+        if live and managed:
+            # Only the new UI opts in; older clients must retain terminal approval.
+            if request.get("approvalUI") is True:
+                with lifecycle_lock():
+                    if not (ROOT / "deleted" / sid).exists():
+                        atomic_json(ROOT / (sid + ".ui.json"), {"time": time.time()})
+                        approvals = pending_permissions(sid, project)
+        return {"messages": messages(transcript(sid, project)), "phase": "permission" if approvals else read_status(sid) if live and managed else "offline", "live": live and managed, "approvals": approvals}
     if op == "upload":
         with lifecycle_lock():
             return upload(sid, request["name"], request["data"])
     if op == "send":
-        return send(sid, request["text"])
+        return send(sid, request["text"], request.get("approvalUI") is True)
     if op == "interrupt":
         metadata(sid)
         if alive(sid):
@@ -710,6 +904,8 @@ def hook(sid, event):
     if phase:
         private_dir(ROOT)
         set_status(sid, phase)
+    if name == "PermissionRequest":
+        return request_permission(sid, event)
 
 
 def main():
@@ -718,8 +914,13 @@ def main():
         project_worker(session_id(sys.argv[2]), int(sys.argv[3]))
         return
     if len(sys.argv) == 3 and sys.argv[1] == "--hook":
-        hook(session_id(sys.argv[2]), json.load(sys.stdin))
-        return  # No stdout: hooks must never approve or alter permission decisions.
+        try:
+            result = hook(session_id(sys.argv[2]), json.load(sys.stdin))
+            if result is not None:
+                print(json.dumps(result), flush=True)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass  # No decision on failure: Claude presents its normal terminal UI.
+        return
     try:
         raw = sys.stdin.buffer.read(30 * 1024 * 1024 + 1)
         if len(raw) > 30 * 1024 * 1024:

@@ -2952,6 +2952,8 @@
 		9923B0049923B0049923B004 /* PendingTerminalStartupRestore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9923B0029923B0029923B002 /* PendingTerminalStartupRestore.swift */; };
 		9923B0039923B0039923B003 /* PendingTerminalStartupRestoreChatBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9923B0019923B0019923B001 /* PendingTerminalStartupRestoreChatBinding.swift */; };
 		80CC21A03A9073202C8D8FA1 /* PersonalChatActionsMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F6BB50344C43B3F5405926 /* PersonalChatActionsMenu.swift */; };
+		DA783B0F48F5A6145120AEB4 /* PersonalChatApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14859526305A2463E0C653D1 /* PersonalChatApproval.swift */; };
+		8C662879F496B29630982963 /* PersonalChatApprovalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3C7BDD1046F66D825DF464 /* PersonalChatApprovalView.swift */; };
 		068463C81296856E4B20C9D3 /* PersonalChatBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8098EF078A451303A3B5D5 /* PersonalChatBackdrop.swift */; };
 		8335F9B3E9E41F1404C3A949 /* PersonalChatComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E05B85288A1D12129DD8ECF /* PersonalChatComposer.swift */; };
 		1849CCF88B34A899D622BD1B /* PersonalChatConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F769B41DAC5D523A63AF1F5A /* PersonalChatConnection.swift */; };
@@ -7674,6 +7676,8 @@
 		9923B0029923B0029923B002 /* PendingTerminalStartupRestore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingTerminalStartupRestore.swift; sourceTree = "<group>"; };
 		9923B0019923B0019923B001 /* PendingTerminalStartupRestoreChatBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingTerminalStartupRestoreChatBinding.swift; sourceTree = "<group>"; };
 		20F6BB50344C43B3F5405926 /* PersonalChatActionsMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatActionsMenu.swift; sourceTree = "<group>"; };
+		14859526305A2463E0C653D1 /* PersonalChatApproval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatApproval.swift; sourceTree = "<group>"; };
+		2B3C7BDD1046F66D825DF464 /* PersonalChatApprovalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatApprovalView.swift; sourceTree = "<group>"; };
 		4A8098EF078A451303A3B5D5 /* PersonalChatBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatBackdrop.swift; sourceTree = "<group>"; };
 		9E05B85288A1D12129DD8ECF /* PersonalChatComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatComposer.swift; sourceTree = "<group>"; };
 		F769B41DAC5D523A63AF1F5A /* PersonalChatConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatConnection.swift; sourceTree = "<group>"; };
@@ -12787,6 +12791,8 @@
 				AFACCCB00523069BB3E7F5E7 /* PersonalChatPendingSend.swift */,
 				EE1A76A19758084ECE97A4CA /* PersonalChatDeletionView.swift */,
 				C1AB41F1DD7581C0A80CF2E5 /* PersonalChatRevealText.swift */,
+				14859526305A2463E0C653D1 /* PersonalChatApproval.swift */,
+				2B3C7BDD1046F66D825DF464 /* PersonalChatApprovalView.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -16809,6 +16815,8 @@
 				9923B0049923B0049923B004 /* PendingTerminalStartupRestore.swift in Sources */,
 				9923B0039923B0039923B003 /* PendingTerminalStartupRestoreChatBinding.swift in Sources */,
 				80CC21A03A9073202C8D8FA1 /* PersonalChatActionsMenu.swift in Sources */,
+				DA783B0F48F5A6145120AEB4 /* PersonalChatApproval.swift in Sources */,
+				8C662879F496B29630982963 /* PersonalChatApprovalView.swift in Sources */,
 				068463C81296856E4B20C9D3 /* PersonalChatBackdrop.swift in Sources */,
 				8335F9B3E9E41F1404C3A949 /* PersonalChatComposer.swift in Sources */,
 				1849CCF88B34A899D622BD1B /* PersonalChatConnection.swift in Sources */,

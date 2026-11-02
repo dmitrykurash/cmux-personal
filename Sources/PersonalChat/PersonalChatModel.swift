@@ -13,6 +13,9 @@ final class PersonalChatModel {
     private(set) var archivedSessionIDs: [String: Set<String>] = [:]
     var selectedID: String?
     var messages: [PersonalChatMessage] = []
+    private(set) var approvals: [PersonalChatApproval] = []
+    private(set) var approvalError: String?
+    private var nativeApprovalsEnabled = true
     private(set) var pendingSend: PersonalChatPendingSend?
     private(set) var revealingMessageIDs: Set<String> = []
     private var remoteMessageIDs: Set<String> = []
@@ -64,6 +67,7 @@ final class PersonalChatModel {
     }
 
     var activityText: String? {
+        if !approvals.isEmpty { return nil }
         if let pendingSend {
             if pendingSend.state == "uncertain" { return String(localized: "personal.delivery.uncertain", defaultValue: "Delivery unconfirmed. Check the terminal before sending again.", bundle: PersonalChatStrings.bundle) }
             if pendingSend.state == "sending" {
@@ -93,6 +97,9 @@ final class PersonalChatModel {
 
     private func clearConversation() {
         messages = []
+        approvals = []
+        approvalError = nil
+        nativeApprovalsEnabled = true
         pendingSend = nil
         revealingMessageIDs = []
         remoteMessageIDs = []
@@ -254,8 +261,9 @@ final class PersonalChatModel {
         guard connected, let id = selectedID, let project else { return }
         let generation = selectionGeneration
         do {
-            let result = try await service.request(.init(op: "read", id: id, project: project.path), connection: connection)
+            let result = try await service.request(.init(op: "read", id: id, project: project.path, approvalUI: nativeApprovalsEnabled), connection: connection)
             guard generation == selectionGeneration else { return }
+            approvals = (result.approvals ?? []).filter { $0.sessionID == id && $0.project == project.path }
             let received = result.messages ?? []
             let newIDs = Set(received.map(\.id)).subtracting(remoteMessageIDs)
             if transcriptLoaded || awaitingReply {
@@ -277,6 +285,7 @@ final class PersonalChatModel {
         } catch {
             guard generation == selectionGeneration, !Task.isCancelled else { return }
             connected = false
+            approvals = []
             phase = "offline"
             self.error = error.localizedDescription
             stopRefresh()
@@ -299,9 +308,53 @@ final class PersonalChatModel {
 
     func stopRefresh() { refreshTask?.cancel(); refreshTask = nil }
 
+    @discardableResult
+    func decideApproval(_ approval: PersonalChatApproval, decision: String) async -> Bool {
+        guard connected, !busy, ["allow", "deny", "terminal"].contains(decision),
+              selectedID == approval.sessionID, project?.path == approval.project,
+              approvals.contains(approval) else { return false }
+        busy = true
+        approvalError = nil
+        stopRefresh()
+        selectionGeneration = UUID() // Discard reads that predate this decision.
+        defer { busy = false; startRefresh() }
+        do {
+            _ = try await service.request(.init(op: "permission_decide", id: approval.sessionID, project: approval.project, approvalID: approval.id, decision: decision), connection: connection)
+            approvals.removeAll { $0.id == approval.id }
+            if approvals.isEmpty && decision != "terminal" { phase = "busy" }
+            return true
+        } catch {
+            // A network failure can happen after delivery. Re-read state; never
+            // repeat the approval automatically or assume the command ran.
+            approvalError = String(localized: "personal.approval.unconfirmed", defaultValue: "Decision unconfirmed. Refreshing the request; nothing will be sent again automatically.", bundle: PersonalChatStrings.bundle)
+            await refresh()
+            return false
+        }
+    }
+
+    func releaseApprovalsToTerminal() async -> Bool {
+        guard connected, !busy, let id = selectedID, let project else { return false }
+        busy = true
+        stopRefresh()
+        selectionGeneration = UUID()
+        defer { busy = false; startRefresh() }
+        do {
+            // Release even requests not seen by the most recent UI snapshot.
+            _ = try await service.request(.init(op: "permission_handoff", id: id, project: project.path), connection: connection)
+            nativeApprovalsEnabled = false
+            approvals = []
+            approvalError = nil
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
     func send() async {
         guard canSend, let id = selectedID else { return }
         busy = true
+        nativeApprovalsEnabled = true
         stopRefresh()
         selectionGeneration = UUID() // Discard reads that began before this send.
         let originalDraft = draft
@@ -327,7 +380,7 @@ final class PersonalChatModel {
             }
             pendingSend?.wireText = text
             deliveryAttempted = true
-            _ = try await service.request(.init(op: "send", id: id, text: text), connection: connection)
+            _ = try await service.request(.init(op: "send", id: id, text: text, approvalUI: true), connection: connection)
             pendingSend?.state = "sent"
             error = nil
         } catch {

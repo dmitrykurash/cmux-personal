@@ -18,4 +18,5 @@ struct PersonalChatReply: Decodable, Sendable {
     var phase: String?
     var live: Bool?
     var count: Int?
+    var approvals: [PersonalChatApproval]?
 }

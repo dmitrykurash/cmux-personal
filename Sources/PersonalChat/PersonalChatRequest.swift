@@ -12,4 +12,7 @@ struct PersonalChatRequest: Encodable, Sendable {
     var repository: String? = nil
     var source: String? = nil
     var confirmation: String? = nil
+    var approvalUI: Bool? = nil
+    var approvalID: String? = nil
+    var decision: String? = nil
 }

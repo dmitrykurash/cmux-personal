@@ -20,10 +20,40 @@ early-use build, not a replacement for the full Ghostty-based cmux application.
   directories and mode 0600. The prompt includes exact remote paths for Claude
   to read under its regular permission rules. Files stay on the VPS until the
   user deletes them; removal from the composer does not delete past uploads.
-- Uses Claude hooks to gate input while busy or awaiting permission. Approvals,
-  questions, slash-command pickers, initial trust and MCP sign-in remain in the
-  real terminal. No tool is approved by the bridge. Existing Claude user/project
-  permissions still apply. Stop sends Escape; it never kills the remote server.
+- Uses Claude hooks to gate input while busy or awaiting permission. Version 0.6
+  shows native permission cards with the exact tool input and Allow once / Deny.
+  The bridge returns only an explicit user's decision for that exact request;
+  it never changes persistent permission rules. Questions, slash-command pickers,
+  initial trust, passwords and MCP sign-in retain the real terminal UI.
+  Stop sends Escape; it never kills the remote server.
+
+## Native permission cards (0.6)
+
+The active chat opts into native approvals on each SSH read. A `PermissionRequest`
+hook publishes a short-lived request with a random ID, project, session, tool and
+complete input. The native card sends Allow once or Deny over the existing strict
+SSH transport. A private Unix socket on the VPS delivers the response directly
+to the waiting hook, which returns Claude's documented decision JSON. No terminal
+keystrokes, `-p`, SDK, API proxy, permission bypass or permanent allow rules are used.
+
+The exact request can be consumed only once. Stale IDs, different sessions/projects,
+closed sessions and deleted chats are rejected. Lost SSH replies trigger a read,
+never an automatic second approval. Socket and request files are owner-only and
+removed when the hook completes. Tool inputs can contain sensitive data; the card
+shows them for review, but never writes them into app logs or chat history.
+
+The hook waits for at most nine minutes. If the active chat stops renewing its
+15-second desktop lease, control returns to the CLI's permission dialog. Opening
+the terminal from the app explicitly releases even unseen native requests first.
+Native approval resumes when you send from the chat or select the conversation again.
+Legacy clients never opt in. Prompts already opened before updating cannot be
+converted retroactively; answer those in the terminal once. New requests in an
+existing session use the updated bridge without restarting Claude.
+
+`AskUserQuestion`, `ExitPlanMode`, oversized input, initial trust, sandbox network
+prompts, password entry and OAuth/slash-command screens retain terminal handling.
+GitHub or MCP authentication may also open the browser. Installing software still
+happens on the VPS. This release does not embed a terminal in the standalone app.
 
 ## Native interface
 
@@ -121,8 +151,9 @@ The Mac only needs access to the VPS; Claude's provider connection is remote.
    to browse the VPS. Review its name and absolute folder, then **Add project**.
    The selected folder is always visible below the project name. All chats in
    one project share its files; different projects can use different folders.
-5. Choose **New chat**. Open terminal whenever Claude needs first-folder trust,
-   permissions or an answer to a question. Trust is never approved by the app.
+5. Choose **New chat**. Review tool requests with **Allow once** or **Deny** in
+   chat. Open terminal for first-folder trust, passwords or interactive questions.
+   Trust is never approved by the app.
 6. Select files with the **paperclip**, or drop them onto the composer, then Send. The app never automatically
    resends a message after an uncertain SSH failure; inspect the terminal first.
 
@@ -217,18 +248,18 @@ This is an unofficial personal cmux modification, not an Anthropic product.
 ## Delivery stages and limits
 
 1. **MVP in this branch:** native UI, SSH/tmux lifecycle, history, attachments,
-   guarded composer, terminal permission handoff and cloud-build workflow.
-2. **Next:** richer Markdown/code blocks, image/audio previews, native per-tool
-   approval cards after validating a stable permission protocol, and pagination.
+   guarded composer, native tool approval cards and cloud-build workflow.
+2. **Next:** richer Markdown/code blocks, image/audio previews, embedded terminal
+   fallback and additional native interaction types.
 3. **Hardening:** event-driven incremental transcripts, broader Claude-version
    compatibility, automated real-CLI scenarios, Intel build, signing/notarization.
 
 History refreshes every two seconds, shows the latest 400 rendered entries and
-lists up to 100 sessions per project. Transcript files over 32 MiB require the terminal.
+lists project sessions with archived rows paginated in groups of 20. Transcript files over 32 MiB require the terminal.
 The parser follows an internal Claude transcript format, not a stable API;
 unknown JSONL records are ignored. Transient transcript edits and compaction
 may require additional adaptation. Inline Markdown is supported; media remains
-file references in this MVP. Project folders must already exist. The UI has one
+file references in this MVP. Projects can be created, opened or cloned in the UI. The UI has one
 configured server. tmux survives disconnects, not a VPS reboot; use Resume after
 a reboot. Startup/MCP/trust dialogs must be completed in the terminal. After cancelling
 a permission dialog with Escape, Claude may not emit a Stop hook; in that case
@@ -250,3 +281,12 @@ isolation, uploads and traversal rejection, terminal control-character rejection
 permission gating, bracketed paste and uncertain-delivery handling. They mock
 tmux; a real SSH/Claude smoke test is separately required. Typechecking the new
 files proves that component compiles, not that the full cmux app builds.
+
+Version 0.6 validation adds eight portable permission scenarios (real private
+sockets, no CLI mocking for delivery), native model checks for exact scope,
+duplicate clicks, stale reads and unconfirmed delivery, and an isolated UI fixture.
+A separate real interactive Claude Code smoke test over SSH approved only
+`printf CHEATCODE_APPROVAL_LIVE_OK`, verified its tool result and return to ready,
+then removed its own session and temporary state. No existing user request was
+approved by the test. The full Ghostty build, notarization and Intel build remain
+outside this local verification.
