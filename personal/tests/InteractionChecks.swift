@@ -33,6 +33,17 @@ private actor InteractionService: PersonalChatServing {
     func completeSend() { sendGate?.resume(); sendGate = nil }
 }
 
+private actor RecoveryService: PersonalChatServing {
+    var reads = 0
+    var operations: [String] = []
+    func request(_ request: PersonalChatRequest, connection: PersonalChatConnection) async throws -> PersonalChatReply {
+        operations.append(request.op)
+        reads += 1
+        if reads == 1 { throw PersonalChatError.sshFailed }
+        return PersonalChatReply(ok: true, messages: [.init(id: "recovered", role: "assistant", text: "Recovered reply")], phase: "ready")
+    }
+}
+
 struct InteractionChecks {
     @MainActor static func run() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cheatcode-interactions-" + UUID().uuidString)
@@ -87,6 +98,20 @@ struct InteractionChecks {
         precondition(failing.draft == "Preserve on uncertain delivery" && failing.pendingSend == nil)
         let failedOperations = await failingService.operations
         precondition(failedOperations.filter { $0 == "send" }.count == 1)
+
+        let recoveryService = RecoveryService()
+        let recovering = PersonalChatModel(service: recoveryService, repository: PersonalChatRepository(file: folder.appendingPathComponent("recovery.json")))
+        recovering.projects = [project]; recovering.projectID = project.id; recovering.selectedID = UUID().uuidString
+        recovering.connected = true; recovering.phase = "ready"; recovering.draft = "Keep my unsent draft"
+        recovering.messages = [.init(id: "cached", role: "assistant", text: "Cached reply")]
+        await recovering.refresh()
+        precondition(!recovering.canSend && recovering.messages.first?.id == "cached", "A failed poll preserves cached messages and disables sends")
+        await recovering.refresh()
+        precondition(recovering.connected && recovering.phase == "ready" && recovering.messages.first?.id == "recovered", "The next successful poll must recover without manual Connect")
+        precondition(recovering.error == nil && recovering.draft == "Keep my unsent draft", "Transient SSH failures must not leave a modal or erase the draft")
+        let recoveryOperations = await recoveryService.operations
+        precondition(recoveryOperations == ["read", "read"], "Recovery only reads; it never repeats a send, resumes Claude or reinstalls the bridge")
+        recovering.stopRefresh()
 
         let sidebar = PersonalChatSidebarState()
         precondition(!sidebar.archiveIsExpanded(project.id), "Archive starts closed")
