@@ -43,6 +43,7 @@ jobs:
         with:
           persist-credentials: false
       - run: bash personal/scripts/test-startup.sh
+      - run: bash personal/scripts/test-microphone-callback.sh
       - run: bash personal/scripts/build-preview.sh artifact
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:

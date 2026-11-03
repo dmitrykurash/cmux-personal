@@ -24,9 +24,23 @@ final class PersonalChatSpeechMicrophone {
         let node = engine.inputNode
         let source = node.outputFormat(forBus: 0)
         guard source.sampleRate > 0, source.channelCount > 0 else { throw PersonalChatSpeechError.input }
-        let converter = try PersonalChatSpeechAudioConverter(from: source, to: format)
         let (stream, continuation) = AsyncThrowingStream<AnalyzerInput, Error>.makeStream(bufferingPolicy: .bufferingNewest(128))
         input = continuation
+        try Self.installTap(on: node, source: source, format: format, continuation: continuation, emit: emit)
+        tapped = true
+        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { _ in
+            continuation.finish(throwing: PersonalChatSpeechError.interrupted)
+        }
+        do { engine.prepare(); try engine.start() }
+        catch { stop(); throw PersonalChatSpeechError.input }
+        return stream
+    }
+
+    // The audio handoff owns the converter and copies every buffer before yielding.
+    static func installTap(on node: AVAudioNode, source: AVAudioFormat, format: AVAudioFormat,
+                        continuation: AsyncThrowingStream<AnalyzerInput, Error>.Continuation,
+                        emit: @escaping @Sendable (PersonalChatSpeechEvent) -> Void) throws {
+        let converter = try PersonalChatSpeechAudioConverter(from: source, to: format)
         node.installTap(onBus: 0, bufferSize: 4096, format: source) { buffer, _ in
             do {
                 let converted = try converter.convert(buffer)
@@ -42,13 +56,6 @@ final class PersonalChatSpeechMicrophone {
                 }
             } catch { continuation.finish(throwing: PersonalChatSpeechError.input) }
         }
-        tapped = true
-        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { _ in
-            continuation.finish(throwing: PersonalChatSpeechError.interrupted)
-        }
-        do { engine.prepare(); try engine.start() }
-        catch { stop(); throw PersonalChatSpeechError.input }
-        return stream
     }
 
     func stop() {
