@@ -61,14 +61,6 @@ struct PersonalChatTextEditor: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView scroll: NSScrollView, context: Context) -> CGSize? {
-        guard let editor = scroll.documentView as? NSTextView,
-              let container = editor.textContainer, let layout = editor.layoutManager else { return nil }
-        let width = max(1, proposal.width ?? 600)
-        editor.setFrameSize(NSSize(width: width, height: max(28, editor.frame.height)))
-        container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
-        layout.ensureLayout(for: container)
-        let height = ceil(layout.usedRect(for: container).height) + 4
-        editor.setFrameSize(NSSize(width: width, height: max(28, height)))
-        return CGSize(width: width, height: min(240, max(28, height)))
+        (scroll.documentView as? PersonalChatNativeTextView)?.fittingSize(width: proposal.width)
     }
 }
