@@ -5297,5 +5297,37 @@
     "identityLocales": {
       "fr": "Suggestions is the standard French noun for this label and shares the English spelling."
     }
+  },
+  "personal.brand.name": {
+    "class": "brand",
+    "source": "cmux"
+  },
+  "personal.brand.edition": {
+    "class": "brand",
+    "source": "PERSONAL"
+  },
+  "personal.brand.engine": {
+    "class": "brand",
+    "source": "Claude Code"
+  },
+  "personal.brand.assistant": {
+    "class": "brand",
+    "source": "Claude"
+  },
+  "personal.brand.product": {
+    "class": "brand",
+    "source": "CheatCode"
+  },
+  "personal.import.exampleURL": {
+    "class": "syntax",
+    "source": "https://github.com/owner/repository"
+  },
+  "personal.menu": {
+    "class": "brand",
+    "source": "CheatCode…"
+  },
+  "personal.brand.github": {
+    "class": "brand",
+    "source": "GitHub"
   }
 }

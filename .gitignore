@@ -82,3 +82,6 @@ tmux-*.log
 
 # Locally downloaded prebuilt client for Packages/Shared/CmuxTerminalClient
 Packages/Shared/CmuxTerminalClient/CmuxTerminalClient.xcframework/
+
+# Pinned standalone CheatCode terminal build cache
+.personal-deps/
