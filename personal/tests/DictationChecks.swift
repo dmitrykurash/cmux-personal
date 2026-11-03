@@ -49,9 +49,13 @@ struct DictationChecks {
         let first = await service.ids[0]
         await service.emit(.recording, id: first)
         await service.emit(.transcript("hello"), id: first)
-        try await wait { model.draft == "Existing draft: hello" }
+        await service.emit(.level(0.1), id: first)
+        try await wait { speech.level == 0.1 }
+        precondition(model.draft == "Existing draft:", "Partial recognition must not touch the editor")
         await service.emit(.transcript("hello world"), id: first)
-        try await wait { model.draft == "Existing draft: hello world" }
+        await service.emit(.level(0.2), id: first)
+        try await wait { speech.level == 0.2 }
+        precondition(model.draft == "Existing draft:")
         await model.send()
         let sendsWhileRecording = await chat.sends
         precondition(sendsWhileRecording == 0, "Enter/Send must not dispatch a partial dictation")
@@ -71,7 +75,9 @@ struct DictationChecks {
         let second = await service.ids[1]
         await service.emit(.recording, id: second)
         await service.emit(.transcript("Привет"), id: second)
-        try await wait { model.draft.hasSuffix("Привет") }
+        await service.emit(.level(0.3), id: second)
+        try await wait { speech.level == 0.3 }
+        precondition(model.draft == "Existing draft: Hello world.")
         speech.cancel()
         precondition(model.draft == "Existing draft: Hello world." && !speech.active)
         let languages = await service.languages
@@ -81,7 +87,6 @@ struct DictationChecks {
         try await wait { await service.ids.count == 3 }
         let third = await service.ids[2]
         await service.emit(.transcript("recognized"), id: third)
-        try await wait { model.draft.hasSuffix("recognized") }
         await service.emit(.failed(.microphone), id: third)
         try await wait { !speech.active }
         precondition(speech.issue != nil && model.draft.hasSuffix("recognized"), "Failures preserve recognized text")
@@ -101,10 +106,12 @@ struct DictationChecks {
         let fifth = await service.ids[4]
         await service.emit(.recording, id: fifth)
         await service.emit(.transcript("new words"), id: fifth)
-        try await wait { model.draft == "New chat draft new words" }
+        await service.emit(.level(0.4), id: fifth)
+        try await wait { speech.level == 0.4 }
+        precondition(model.draft == "New chat draft")
         speech.cancel()
         precondition(model.draft == "New chat draft", "Late callbacks cannot cross into a new chat or recording")
         await service.finish(fifth)
-        print("Dictation checks passed: live revisions, existing draft, stop/finalization, cancellation, language choice, recoverable errors, no automatic sending and chat-switch races.")
+        print("Dictation checks passed: deferred revisions, existing draft, stop/finalization, cancellation, language choice, recoverable errors, no automatic sending and chat-switch races.")
     }
 }

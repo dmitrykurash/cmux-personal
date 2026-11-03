@@ -681708,55 +681708,55 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Listening… Your words stay in the draft."
+            "value": "Recording… Stop to add the text to your draft."
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "جارٍ الاستماع… ستبقى كلماتك في المسودة."
+            "value": "جارٍ التسجيل… أوقف التسجيل لإضافة النص إلى المسودة."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ich höre zu… Deine Worte bleiben im Entwurf."
+            "value": "Aufnahme läuft… Stoppe die Aufnahme, um den Text zum Entwurf hinzuzufügen."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Escuchando… Tus palabras quedan en el borrador."
+            "value": "Grabando… Detén la grabación para añadir el texto al borrador."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "À l’écoute… Vos paroles restent dans le brouillon."
+            "value": "Enregistrement… Arrêtez-le pour ajouter le texte au brouillon."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "聞き取り中… 入力した内容は下書きに残ります。"
+            "value": "録音中… 停止するとテキストが下書きに追加されます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "듣는 중… 인식된 내용은 초안에 남습니다."
+            "value": "녹음 중… 중지하면 초안에 텍스트가 추가됩니다."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在聆听… 你的文字会保留在草稿中。"
+            "value": "正在录音… 停止后会将文字加入草稿。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在聆聽… 你的文字會保留在草稿中。"
+            "value": "正在錄音… 停止後會將文字加入草稿。"
           }
         }
       }
@@ -682583,6 +682583,242 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新命名聊天…"
+          }
+        }
+      }
+    },
+    "personal.console.close": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close console"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إغلاق وحدة التحكم"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konsole schließen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar consola"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermer la console"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コンソールを閉じる"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "콘솔 닫기"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭控制台"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉主控台"
+          }
+        }
+      }
+    },
+    "personal.console.connecting": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to your session…"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جارٍ الاتصال بجلستك…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbindung mit deiner Sitzung wird hergestellt…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectando con tu sesión…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connexion à votre session…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "セッションに接続中…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "세션에 연결하는 중…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在连接到你的会话…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在連線至你的工作階段…"
+          }
+        }
+      }
+    },
+    "personal.console.reconnect": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnect console"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة توصيل وحدة التحكم"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konsole erneut verbinden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconectar consola"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnecter la console"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コンソールに再接続"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "콘솔 다시 연결"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新连接控制台"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新連線主控台"
+          }
+        }
+      }
+    },
+    "personal.console.select": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select a chat to open its console."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اختر محادثة لفتح وحدة التحكم الخاصة بها."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wähle einen Chat aus, um seine Konsole zu öffnen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selecciona un chat para abrir su consola."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sélectionnez un chat pour ouvrir sa console."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャットを選択してコンソールを開きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "콘솔을 열 채팅을 선택하세요."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择聊天以打开其控制台。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選取聊天以開啟其主控台。"
           }
         }
       }

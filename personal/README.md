@@ -334,7 +334,8 @@ outside this local verification.
 ## On-device dictation (0.8)
 
 Click the microphone beside Send, select English or Russian in the language menu,
-and allow microphone access on the first use. Text appears in the existing draft.
+and allow microphone access on the first use. A waveform appears while recording.
+Recognized text is inserted into the existing draft after Stop.
 Stop finishes the transcription and makes it editable; Cancel restores the draft
 from before recording. Nothing is sent until you explicitly press Send.
 
@@ -370,3 +371,25 @@ engine negotiates a different format at startup.
 boundary using AVAudioEngine's real tap queue and offline synthetic audio; it never
 opens a microphone or speakers. This regression runs in the macOS Actions job in
 addition to the native state and rename checks.
+
+## Stable composer and console pane (0.9)
+
+**Open console**, approval handoffs and built-in screens such as `/usage` now open
+an adjustable right-hand pane in the standalone app. Drag the divider to resize it;
+close it with the X. The chat stays usable beside it. Resizing or reopening an
+already open pane preserves its SSH attachment. Closing detaches only the local
+SSH child and leaves the remote Claude/tmux session running. The pane follows chat
+selection; saved, stopped sessions require an explicit Resume. Narrow windows
+hide the sidebar when the console opens and restore it when it closes. Full cmux
+retains its existing Ghostty console entrypoint.
+
+The composer measures text in a separate text system, without applying speculative
+SwiftUI widths to its live editor. Its actual viewport controls wrapping and
+scrolling. The status action now aligns with the composer's trailing edge.
+Dictation keeps revisions out of the editor while a stable waveform is visible;
+Stop inserts the final text once, Cancel restores the original draft, and errors
+retain any recognized text for editing. Nothing is automatically sent.
+
+`bash personal/scripts/test-editor-layout.sh` checks measurement purity, wrapping
+and bounded height. The native state checks cover deferred transcription and
+console attachment identity, permission handoff, chat changes and close races.

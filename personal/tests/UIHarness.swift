@@ -88,7 +88,7 @@ struct UIHarness: App {
                 }.padding(12)
                 PersonalChatView(model: model, openTerminal: { _ in })
             }
-                    .sheet(isPresented: $console) { PersonalChatConsoleSheet(request: .init(command: "/bin/cat")) }
+                    .sheet(isPresented: $console) { PersonalChatTerminalSurface(command: "/bin/cat", ended: {}).frame(width: 800, height: 600) }
         }.defaultSize(width: 1200, height: 850)
     }
 }

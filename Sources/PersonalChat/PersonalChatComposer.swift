@@ -23,7 +23,7 @@ struct PersonalChatComposer: View {
                     Image(systemName: "lock").font(.system(size: 13)).foregroundStyle(palette.muted)
                         .padding(.top, 5).help(String(localized: "personal.connection", defaultValue: "Connection", bundle: PersonalChatStrings.bundle))
                     ZStack(alignment: .topLeading) {
-                        if model.draft.isEmpty {
+                        if model.draft.isEmpty && model.dictation?.active != true {
                             Text(placeholder).font(PersonalChatTypography.body(14.5)).foregroundStyle(palette.muted)
                                 .padding(.top, 2).allowsHitTesting(false)
                         }
@@ -33,8 +33,15 @@ struct PersonalChatComposer: View {
                             textColor: NSColor(palette.text), insertionColor: NSColor(palette.text),
                             focusChanged: { focused = $0 }, submit: { Task { await model.send() } }
                         ).fixedSize(horizontal: false, vertical: true)
-                    }
-                }.padding(.trailing, 6)
+                            .frame(maxWidth: .infinity)
+                            .opacity(model.dictation?.active == true ? 0 : 1)
+                            .allowsHitTesting(model.dictation?.active != true)
+                            .accessibilityHidden(model.dictation?.active == true)
+                        if let dictation = model.dictation, dictation.active {
+                            PersonalChatDictationWaveform(dictation: dictation)
+                        }
+                    }.frame(maxWidth: .infinity, minHeight: model.dictation?.active == true ? 72 : 28, alignment: .topLeading)
+                }.frame(maxWidth: .infinity).padding(.trailing, 6)
                 HStack(spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: "asterisk").font(.system(size: 11, weight: .medium))
@@ -130,7 +137,8 @@ struct PersonalChatComposer: View {
                 Text(model.consoleCommand ?? String(localized: "personal.console.title", defaultValue: "Remote console", bundle: PersonalChatStrings.bundle))
                 Spacer()
                 Button(String(localized: "personal.console.done", defaultValue: "Back to chat", bundle: PersonalChatStrings.bundle)) { Task { await model.resumeNativeApprovals() } }
-                Button(action: openTerminal) { Image(systemName: "arrow.up.right") }
+                Button(action: openTerminal) { Image(systemName: "arrow.up.right").frame(width: 28, height: 28) }
+                    .buttonStyle(PersonalChatHoverStyle(radius: 7))
                     .help(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
                     .accessibilityLabel(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
             } else if model.phase == "offline" {
@@ -143,12 +151,13 @@ struct PersonalChatComposer: View {
                 Image(systemName: "hand.raised")
                 Text(String(localized: "personal.console.fallback", defaultValue: "Continue in the console to finish this step.", bundle: PersonalChatStrings.bundle)).lineLimit(2)
                 Spacer()
-                Button(action: openTerminal) { Image(systemName: "arrow.up.right") }
+                Button(action: openTerminal) { Image(systemName: "arrow.up.right").frame(width: 28, height: 28) }
+                    .buttonStyle(PersonalChatHoverStyle(radius: 7))
                     .help(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
                     .accessibilityLabel(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
             }
-            Spacer(minLength: 0)
-        }.font(PersonalChatTypography.body(12)).foregroundStyle(palette.secondary).buttonStyle(.plain).padding(.horizontal, 4)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+            .font(PersonalChatTypography.body(12)).foregroundStyle(palette.secondary).buttonStyle(.plain).padding(.horizontal, 4)
     }
 
     private var attachmentStrip: some View {

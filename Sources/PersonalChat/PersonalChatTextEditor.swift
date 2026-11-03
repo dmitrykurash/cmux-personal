@@ -17,7 +17,7 @@ struct PersonalChatTextEditor: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
+        let scroll = PersonalChatEditorScrollView()
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         scroll.hasVerticalScroller = true
@@ -42,6 +42,7 @@ struct PersonalChatTextEditor: NSViewRepresentable {
         paragraph.minimumLineHeight = 24
         paragraph.maximumLineHeight = 24
         editor.defaultParagraphStyle = paragraph
+        editor.typingAttributes = [.font: PersonalChatTypography.editor(14.5), .paragraphStyle: paragraph]
         editor.setAccessibilityIdentifier("personal.composer.editor")
         // The surrounding composer owns file drops as attachments.
         editor.unregisterDraggedTypes()
@@ -52,7 +53,11 @@ struct PersonalChatTextEditor: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let editor = scroll.documentView as? PersonalChatNativeTextView else { return }
-        if !editor.hasMarkedText(), editor.string != text { editor.string = text }
+        if !editor.hasMarkedText(), editor.string != text {
+            editor.textStorage?.setAttributedString(NSAttributedString(string: text, attributes: editor.typingAttributes))
+            editor.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+            scroll.needsLayout = true
+        }
         editor.isEditable = editable
         editor.textColor = textColor
         editor.insertionPointColor = insertionColor

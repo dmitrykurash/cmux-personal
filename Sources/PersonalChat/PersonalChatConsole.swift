@@ -10,9 +10,9 @@ struct PersonalChatConsoleRequest: Identifiable {
     var cliCommand: String? = nil
 }
 
-struct PersonalChatConsoleSheet: View {
-    let request: PersonalChatConsoleRequest
-    @Environment(\.dismiss) private var dismiss
+struct PersonalChatConsolePane: View {
+    @Bindable var state: PersonalChatConsoleState
+    @Bindable var model: PersonalChatModel
     @Environment(\.colorScheme) private var scheme
     @State private var ended = false
     static var supported: Bool {
@@ -25,30 +25,69 @@ struct PersonalChatConsoleSheet: View {
     var body: some View {
         let palette = PersonalChatPalette(scheme: scheme)
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Image(systemName: "terminal").foregroundStyle(palette.secondary)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(request.cliCommand ?? String(localized: "personal.console.title", defaultValue: "Remote console", bundle: PersonalChatStrings.bundle)).font(PersonalChatTypography.body(14, weight: .medium))
-                    Text(ended ? String(localized: "personal.console.ended", defaultValue: "Console disconnected. Your saved chat is still available.", bundle: PersonalChatStrings.bundle) : request.cliCommand != nil ? String(localized: "personal.console.commandHint", defaultValue: "Press Esc to close the CLI screen, then return to chat.", bundle: PersonalChatStrings.bundle) : String(localized: "personal.console.note", defaultValue: "Your live VPS session. Closing this panel keeps Claude running.", bundle: PersonalChatStrings.bundle))
-                        .font(PersonalChatTypography.body(11)).foregroundStyle(palette.muted)
+                    Text(model.consoleCommand ?? String(localized: "personal.console.title", defaultValue: "Remote console", bundle: PersonalChatStrings.bundle))
+                        .font(PersonalChatTypography.body(13, weight: .medium)).lineLimit(1)
+                    Text(model.sessions.first(where: { $0.id == model.selectedID })?.title ?? model.project?.name ?? "")
+                        .font(PersonalChatTypography.body(11)).foregroundStyle(palette.muted).lineLimit(1)
                 }
-                Spacer()
-                Button(String(localized: "personal.console.done", defaultValue: "Back to chat", bundle: PersonalChatStrings.bundle)) { dismiss() }
-                    .buttonStyle(.bordered)
-            }.padding(16)
+                Spacer(minLength: 0)
+                if ended || state.failed {
+                    Button(action: state.reconnect) { Image(systemName: "arrow.clockwise").frame(width: 28, height: 28) }
+                        .buttonStyle(PersonalChatHoverStyle(radius: 7)).disabled(model.busy || !model.connected)
+                        .accessibilityLabel(String(localized: "personal.console.reconnect", defaultValue: "Reconnect console", bundle: PersonalChatStrings.bundle))
+                }
+                Button(action: state.close) { Image(systemName: "xmark").frame(width: 28, height: 28) }
+                    .buttonStyle(PersonalChatHoverStyle(radius: 7))
+                    .help(String(localized: "personal.console.close", defaultValue: "Close console", bundle: PersonalChatStrings.bundle))
+                    .accessibilityLabel(String(localized: "personal.console.close", defaultValue: "Close console", bundle: PersonalChatStrings.bundle))
+                    .accessibilityIdentifier("personal.console.close")
+            }.padding(14)
             Divider().overlay(palette.border)
-            #if canImport(SwiftTerm)
-            PersonalChatTerminalSurface(command: request.command, ended: { ended = true })
-                .padding(10)
-            #endif
-        }.frame(width: 960, height: 650).background(palette.canvas).foregroundStyle(palette.text)
-            .interactiveDismissDisabled() // Escape belongs to the CLI, not the sheet.
+            if let request = state.request {
+                #if canImport(SwiftTerm)
+                PersonalChatTerminalSurface(command: request.command, focusID: state.focusID, ended: { if state.request?.id == request.id { ended = true } })
+                    .id(request.id).padding(8)
+                #endif
+            } else {
+                VStack(spacing: 14) {
+                    if state.opening || model.busy { ProgressView().controlSize(.small) }
+                    Text(model.selectedID == nil
+                         ? String(localized: "personal.console.select", defaultValue: "Select a chat to open its console.", bundle: PersonalChatStrings.bundle)
+                         : model.phase == "offline"
+                         ? String(localized: "personal.saved", defaultValue: "Saved conversation", bundle: PersonalChatStrings.bundle)
+                         : state.failed || !model.connected
+                         ? String(localized: "personal.console.ended", defaultValue: "Console disconnected. Your saved chat is still available.", bundle: PersonalChatStrings.bundle)
+                         : String(localized: "personal.console.connecting", defaultValue: "Connecting to your session…", bundle: PersonalChatStrings.bundle))
+                        .font(PersonalChatTypography.body(12)).foregroundStyle(palette.secondary)
+                        .multilineTextAlignment(.center)
+                    if model.selectedID != nil && model.phase == "offline" {
+                        Button(String(localized: "personal.resume", defaultValue: "Resume session", bundle: PersonalChatStrings.bundle)) { Task { await model.startSession(resume: true) } }
+                            .buttonStyle(.bordered).disabled(!model.connected || model.busy)
+                    }
+                }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            Divider().overlay(palette.border)
+            Text(ended
+                 ? String(localized: "personal.console.ended", defaultValue: "Console disconnected. Your saved chat is still available.", bundle: PersonalChatStrings.bundle)
+                 : String(localized: "personal.console.note", defaultValue: "Your live VPS session. Closing this panel keeps Claude running.", bundle: PersonalChatStrings.bundle))
+                .font(PersonalChatTypography.body(10.5)).foregroundStyle(palette.muted)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(palette.canvas).foregroundStyle(palette.text)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(palette.border))
+        .onChange(of: state.request?.id) { ended = false }
     }
 }
 
 #if canImport(SwiftTerm)
 struct PersonalChatTerminalSurface: NSViewRepresentable {
     let command: String
+    var focusID = UUID()
     let ended: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(ended: ended) }
     func makeNSView(context: Context) -> TerminalView {
@@ -67,7 +106,12 @@ struct PersonalChatTerminalSurface: NSViewRepresentable {
         process.startProcess(executable: "/bin/sh", args: ["-c", "exec " + command], environment: environment)
         return view
     }
-    func updateNSView(_ nsView: TerminalView, context: Context) {}
+    func updateNSView(_ nsView: TerminalView, context: Context) {
+        if context.coordinator.focusID != focusID {
+            context.coordinator.focusID = focusID
+            nsView.window?.makeFirstResponder(nsView)
+        }
+    }
     static func dismantleNSView(_ nsView: TerminalView, coordinator: Coordinator) {
         // Disconnect only this local SSH process; remote tmux remains alive.
         if let process = coordinator.process, process.running {
@@ -83,6 +127,7 @@ struct PersonalChatTerminalSurface: NSViewRepresentable {
         override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); window?.makeFirstResponder(self) }
     }
     @MainActor final class Coordinator: NSObject, @preconcurrency TerminalViewDelegate, @preconcurrency LocalProcessDelegate {
+        var focusID: UUID?
         weak var view: TerminalView?
         var process: LocalProcess?
         let ended: () -> Void

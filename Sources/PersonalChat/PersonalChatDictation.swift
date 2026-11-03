@@ -37,7 +37,6 @@ final class PersonalChatDictation {
                     case .transcript(let text):
                         let separator = self.original.isEmpty || self.original.last?.isWhitespace == true || text.isEmpty ? "" : " "
                         self.lastDraft = self.original + separator + text
-                        self.update?(self.lastDraft)
                     }
                 }
             } catch {
@@ -47,6 +46,7 @@ final class PersonalChatDictation {
             }
             await service.cancel(id: token)
             guard let self, self.id == token else { return }
+            self.update?(self.lastDraft)
             self.phase = .idle; self.level = 0; self.id = nil; self.update = nil; self.task = nil
         }
     }
@@ -60,7 +60,7 @@ final class PersonalChatDictation {
     func cancel(restore: Bool = true) {
         guard let token = id else { return }
         id = nil; task?.cancel(); task = nil
-        if restore { update?(original) }
+        update?(restore ? original : lastDraft)
         update = nil; phase = .idle; level = 0; issue = nil
         Task { await service.cancel(id: token) }
     }

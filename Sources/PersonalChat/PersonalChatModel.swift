@@ -397,16 +397,19 @@ final class PersonalChatModel {
         busy = true
         stopRefresh()
         selectionGeneration = UUID()
+        let generation = selectionGeneration
+        let targetConnection = connection
         defer { busy = false; startRefresh() }
         do {
             // Release even requests not seen by the most recent UI snapshot.
             _ = try await service.request(.init(op: "permission_handoff", id: id, project: project.path), connection: connection)
+            guard generation == selectionGeneration, selectedID == id, self.project?.id == project.id, connection == targetConnection else { return false }
             nativeApprovalsEnabled = false
             approvals = []
             approvalError = nil
             return true
         } catch {
-            self.error = error.localizedDescription
+            if generation == selectionGeneration { self.error = error.localizedDescription }
             return false
         }
     }

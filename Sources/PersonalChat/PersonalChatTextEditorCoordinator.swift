@@ -10,6 +10,7 @@ final class PersonalChatTextEditorCoordinator: NSObject, NSTextViewDelegate {
         guard let textView = notification.object as? NSTextView else { return }
         parent.text = textView.string
         textView.invalidateIntrinsicContentSize()
+        textView.enclosingScrollView?.needsLayout = true
     }
 
     func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {

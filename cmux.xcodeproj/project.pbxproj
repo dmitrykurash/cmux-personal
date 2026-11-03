@@ -2958,11 +2958,14 @@
 		8335F9B3E9E41F1404C3A949 /* PersonalChatComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E05B85288A1D12129DD8ECF /* PersonalChatComposer.swift */; };
 		1849CCF88B34A899D622BD1B /* PersonalChatConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F769B41DAC5D523A63AF1F5A /* PersonalChatConnection.swift */; };
 		739E5BD1718EAFED89F6902A /* PersonalChatConsole.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48938D86053B010EBE1E1834 /* PersonalChatConsole.swift */; };
+		0A2F487F13253EEAAF3802C9 /* PersonalChatConsoleState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 792D583769E4E406F1745907 /* PersonalChatConsoleState.swift */; };
 		E287671050E22BBA3B5FDB27 /* PersonalChatDeletionTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 135889C917F873AAE406B167 /* PersonalChatDeletionTarget.swift */; };
 		FD2453D1732658A1D7BD1A5D /* PersonalChatDeletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1A76A19758084ECE97A4CA /* PersonalChatDeletionView.swift */; };
 		5F9FC7D92E508198A85B4944 /* PersonalChatDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A376CDFE00C3140693029E /* PersonalChatDictation.swift */; };
 		E56D65ED07A56054DAC0BA1C /* PersonalChatDictationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A2D591B68EF3052C5839174 /* PersonalChatDictationButton.swift */; };
 		FE5B187A466DC9381848CB9C /* PersonalChatDictationStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9F16B2E34C142C7EAAC738F /* PersonalChatDictationStatus.swift */; };
+		BA629B5B5FDB02014DDB9417 /* PersonalChatDictationWaveform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 243CBF1F22E38F37578DC86D /* PersonalChatDictationWaveform.swift */; };
+		72B121106D4CFE14C973636D /* PersonalChatEditorScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C0E1AB461730D209E5457F /* PersonalChatEditorScrollView.swift */; };
 		A81D7DEFD83E3D392B727490 /* PersonalChatError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CEF01640AD1A26F95CC9884 /* PersonalChatError.swift */; };
 		CF6ACD418221395D84C59F4B /* PersonalChatFolderPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4C154748586EBF9A75D6E2 /* PersonalChatFolderPicker.swift */; };
 		BCDF10BD4CF5BA79E4657530 /* PersonalChatGitHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEF7B228C0C1EEBF62B9D874 /* PersonalChatGitHub.swift */; };
@@ -7699,11 +7702,14 @@
 		9E05B85288A1D12129DD8ECF /* PersonalChatComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatComposer.swift; sourceTree = "<group>"; };
 		F769B41DAC5D523A63AF1F5A /* PersonalChatConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatConnection.swift; sourceTree = "<group>"; };
 		48938D86053B010EBE1E1834 /* PersonalChatConsole.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatConsole.swift; sourceTree = "<group>"; };
+		792D583769E4E406F1745907 /* PersonalChatConsoleState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatConsoleState.swift; sourceTree = "<group>"; };
 		135889C917F873AAE406B167 /* PersonalChatDeletionTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatDeletionTarget.swift; sourceTree = "<group>"; };
 		EE1A76A19758084ECE97A4CA /* PersonalChatDeletionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatDeletionView.swift; sourceTree = "<group>"; };
 		17A376CDFE00C3140693029E /* PersonalChatDictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatDictation.swift; sourceTree = "<group>"; };
 		6A2D591B68EF3052C5839174 /* PersonalChatDictationButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatDictationButton.swift; sourceTree = "<group>"; };
 		A9F16B2E34C142C7EAAC738F /* PersonalChatDictationStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatDictationStatus.swift; sourceTree = "<group>"; };
+		243CBF1F22E38F37578DC86D /* PersonalChatDictationWaveform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatDictationWaveform.swift; sourceTree = "<group>"; };
+		A2C0E1AB461730D209E5457F /* PersonalChatEditorScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatEditorScrollView.swift; sourceTree = "<group>"; };
 		6CEF01640AD1A26F95CC9884 /* PersonalChatError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatError.swift; sourceTree = "<group>"; };
 		CA4C154748586EBF9A75D6E2 /* PersonalChatFolderPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatFolderPicker.swift; sourceTree = "<group>"; };
 		BEF7B228C0C1EEBF62B9D874 /* PersonalChatGitHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalChat/PersonalChatGitHub.swift; sourceTree = "<group>"; };
@@ -12844,6 +12850,9 @@
 				2A818D5B97EA52F0AD2AE0B9 /* PersonalChatRenameTarget.swift */,
 				6D93CE3A1C5AE661C529C138 /* PersonalChatRenameError.swift */,
 				CAF3DA2B45258814A03B4614 /* PersonalChatRenameView.swift */,
+				792D583769E4E406F1745907 /* PersonalChatConsoleState.swift */,
+				A2C0E1AB461730D209E5457F /* PersonalChatEditorScrollView.swift */,
+				243CBF1F22E38F37578DC86D /* PersonalChatDictationWaveform.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -16872,11 +16881,14 @@
 				8335F9B3E9E41F1404C3A949 /* PersonalChatComposer.swift in Sources */,
 				1849CCF88B34A899D622BD1B /* PersonalChatConnection.swift in Sources */,
 				739E5BD1718EAFED89F6902A /* PersonalChatConsole.swift in Sources */,
+				0A2F487F13253EEAAF3802C9 /* PersonalChatConsoleState.swift in Sources */,
 				E287671050E22BBA3B5FDB27 /* PersonalChatDeletionTarget.swift in Sources */,
 				FD2453D1732658A1D7BD1A5D /* PersonalChatDeletionView.swift in Sources */,
 				5F9FC7D92E508198A85B4944 /* PersonalChatDictation.swift in Sources */,
 				E56D65ED07A56054DAC0BA1C /* PersonalChatDictationButton.swift in Sources */,
 				FE5B187A466DC9381848CB9C /* PersonalChatDictationStatus.swift in Sources */,
+				BA629B5B5FDB02014DDB9417 /* PersonalChatDictationWaveform.swift in Sources */,
+				72B121106D4CFE14C973636D /* PersonalChatEditorScrollView.swift in Sources */,
 				A81D7DEFD83E3D392B727490 /* PersonalChatError.swift in Sources */,
 				CF6ACD418221395D84C59F4B /* PersonalChatFolderPicker.swift in Sources */,
 				BCDF10BD4CF5BA79E4657530 /* PersonalChatGitHub.swift in Sources */,

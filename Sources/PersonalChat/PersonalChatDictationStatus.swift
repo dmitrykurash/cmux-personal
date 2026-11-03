@@ -3,7 +3,6 @@ import SwiftUI
 struct PersonalChatDictationStatus: View {
     @Bindable var dictation: PersonalChatDictation
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let palette = PersonalChatPalette(scheme: scheme)
@@ -20,14 +19,8 @@ struct PersonalChatDictationStatus: View {
             } else if dictation.active {
                 HStack(spacing: 8) {
                     if dictation.phase == .recording {
-                        HStack(spacing: 2) {
-                            ForEach(0..<5) { index in
-                                Capsule().fill(palette.text)
-                                    .frame(width: 3, height: reduceMotion ? 8 : 4 + CGFloat(dictation.level) * CGFloat(18 - abs(index - 2) * 5))
-                            }
-                        }.frame(width: 24, height: 20).accessibilityHidden(true)
-                            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: dictation.level)
-                        Text(String(localized: "personal.voice.listening", defaultValue: "Listening… Your words stay in the draft.", bundle: PersonalChatStrings.bundle))
+                        Image(systemName: "mic.fill")
+                        Text(String(localized: "personal.voice.listening", defaultValue: "Recording… Stop to add the text to your draft.", bundle: PersonalChatStrings.bundle))
                     } else {
                         ProgressView().controlSize(.mini)
                         Text(dictation.phase == .finishing
@@ -39,6 +32,6 @@ struct PersonalChatDictationStatus: View {
                         .buttonStyle(.plain)
                 }.foregroundStyle(palette.secondary)
             }
-        }.font(PersonalChatTypography.body(11.5)).padding(.horizontal, 4)
+        }.frame(maxWidth: .infinity, alignment: .leading).font(PersonalChatTypography.body(11.5)).padding(.horizontal, 4)
     }
 }

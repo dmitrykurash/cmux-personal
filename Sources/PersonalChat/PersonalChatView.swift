@@ -11,23 +11,37 @@ struct PersonalChatView: View {
     @State private var addingProject = false
     @State private var sidebarState = PersonalChatSidebarState()
     @State private var showingGitHub = false
-    @State private var consoleRequest: PersonalChatConsoleRequest?
+    @State private var console: PersonalChatConsoleState
+    @State private var contentWidth: CGFloat = 1320
+    @State private var sidebarHiddenForConsole = false
     @State private var renameTarget: PersonalChatRenameTarget?
     @State private var deletionTarget: PersonalChatDeletionTarget?
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
     private var isConversationEmpty: Bool { model.messages.isEmpty && model.approvals.isEmpty }
-    private var modalPresented: Bool { model.showingSettings || addingProject || showingGitHub || consoleRequest != nil || deletionTarget != nil || renameTarget != nil }
+    private var modalPresented: Bool { model.showingSettings || addingProject || showingGitHub || deletionTarget != nil || renameTarget != nil }
     private var newChatLabel: String { String(localized: "personal.new", defaultValue: "New chat", bundle: PersonalChatStrings.bundle) }
     private var motion: Animation? { reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.3) }
 
-    var body: some View {
+    init(model: PersonalChatModel, openTerminal: @escaping (String) -> Void) {
+        self.model = model
+        self.openTerminal = openTerminal
+        _console = State(initialValue: PersonalChatConsoleState(model: model))
+    }
+
+    private var mainLayout: some View {
         HStack(spacing: sidebarVisible ? 10 : 0) {
             sidebar.frame(width: 250).frame(width: sidebarVisible ? 250 : 0, alignment: .leading)
                 .opacity(sidebarVisible ? 1 : 0).clipped().accessibilityHidden(!sidebarVisible)
-            conversation.frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.top, sidebarVisible ? 0 : 28)
+            HSplitView {
+                conversation.frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+                if console.presented {
+                    PersonalChatConsolePane(state: console, model: model)
+                        .frame(minWidth: 320, idealWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }.padding(.top, sidebarVisible ? 0 : 28)
         }
-        .padding(10).frame(minWidth: 750, minHeight: 560)
+        .padding(10).frame(minWidth: console.presented && sidebarVisible ? 1010 : 750, minHeight: 560)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
         .background {
             ZStack {
                 LinearGradient(colors: [palette.canvasTop, palette.canvasBottom], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -37,6 +51,10 @@ struct PersonalChatView: View {
         }
         .foregroundStyle(palette.text).tint(palette.accent).font(PersonalChatTypography.body(13))
         .ignoresSafeArea()
+    }
+
+    var body: some View {
+        mainLayout
         .task { await model.load() }
         .onDisappear { model.stopRefresh(); model.dictation?.cancel(restore: false) }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
@@ -65,8 +83,15 @@ struct PersonalChatView: View {
             })
         }
         .sheet(isPresented: $showingGitHub) { PersonalChatGitHubView(model: model.makeGitHub()) }
-        .sheet(item: $consoleRequest, onDismiss: { Task { await model.resumeNativeApprovals() } }) { request in
-            PersonalChatConsoleSheet(request: request)
+        .onChange(of: console.scope) { console.reconcile() }
+        .onChange(of: model.connected) { console.reconcile() }
+        .onChange(of: model.busy) { if !model.busy { console.reconcile() } }
+        .onChange(of: model.phase) { console.reconcile() }
+        .onChange(of: console.presented) {
+            if !console.presented && sidebarHiddenForConsole {
+                sidebarVisible = true
+                sidebarHiddenForConsole = false
+            }
         }
         .onChange(of: model.consolePresentationID) {
             if model.consolePresentationID != nil {
@@ -394,14 +419,19 @@ struct PersonalChatView: View {
 
     private func showTerminal() {
         guard let id = model.selectedID else { return }
-        Task {
-            guard await model.releaseApprovalsToTerminal(), model.selectedID == id else { return }
-            do {
-                let command = try model.connection.terminalCommand(sessionID: id)
-                if PersonalChatConsoleSheet.supported { consoleRequest = .init(command: command, cliCommand: model.consoleCommand) }
-                else { openTerminal(command) }
+        model.dictation?.cancel(restore: false)
+        if PersonalChatConsolePane.supported {
+            if !console.presented && sidebarVisible && contentWidth < 1100 {
+                sidebarHiddenForConsole = true
+                sidebarVisible = false
             }
-            catch { model.error = error.localizedDescription }
+            console.open()
+        } else {
+            Task {
+                guard await model.releaseApprovalsToTerminal(), model.selectedID == id else { return }
+                do { openTerminal(try model.connection.terminalCommand(sessionID: id)) }
+                catch { model.error = error.localizedDescription }
+            }
         }
     }
 }
