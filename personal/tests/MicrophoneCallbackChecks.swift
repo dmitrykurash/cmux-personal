@@ -18,7 +18,8 @@ struct MicrophoneCallbackChecks {
         try engine.enableManualRenderingMode(.offline, format: source, maximumFrameCount: 4096)
         let (stream, continuation) = AsyncThrowingStream<AnalyzerInput, Error>.makeStream()
         let level = OSAllocatedUnfairLock(initialState: Float.zero)
-        try PersonalChatSpeechMicrophone.installTap(on: engine.mainMixerNode, source: source, format: target, continuation: continuation) { event in
+        let captureFormat = engine.mainMixerNode.outputFormat(forBus: 0)
+        try PersonalChatSpeechMicrophone.installTap(on: engine.mainMixerNode, source: captureFormat, format: target, continuation: continuation) { event in
             dispatchPrecondition(condition: .notOnQueue(.main))
             if case .level(let value) = event { level.withLock { $0 = value }; continuation.finish() }
         }

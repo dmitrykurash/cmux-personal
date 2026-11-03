@@ -105,6 +105,7 @@ struct StartupChecks {
         try await ApprovalChecks.run()
         await GitHubChecks.run()
         try await DictationChecks.run()
+        try await RenameChecks.run()
         print("Startup and archive checks passed: reconnect, selection restore, history-only restore, idempotent load, project isolation, archive persistence, draft preservation, restore, save failure, legacy setup, offline retry and strict SSH with Keychain.")
     }
 }

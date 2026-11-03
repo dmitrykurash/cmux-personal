@@ -4,7 +4,7 @@ import os
 
 /// Used only by one serial audio callback. Every result owns its sample storage.
 final class PersonalChatSpeechAudioConverter: @unchecked Sendable {
-    private let converter: AVAudioConverter
+    private var converter: AVAudioConverter
     private let format: AVAudioFormat
 
     init(from input: AVAudioFormat, to output: AVAudioFormat) throws {
@@ -14,6 +14,12 @@ final class PersonalChatSpeechAudioConverter: @unchecked Sendable {
     }
 
     func convert(_ input: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+        // The engine can negotiate its tap format after the graph starts. Use
+        // the delivered buffer's format, not an earlier node-format snapshot.
+        if converter.inputFormat != input.format {
+            guard let updated = AVAudioConverter(from: input.format, to: format) else { throw PersonalChatSpeechError.input }
+            converter = updated
+        }
         let capacity = AVAudioFrameCount(ceil(Double(input.frameLength) * format.sampleRate / input.format.sampleRate) + 32)
         guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { throw PersonalChatSpeechError.input }
         let supply = OSAllocatedUnfairLock(initialState: (buffer: input, supplied: false))

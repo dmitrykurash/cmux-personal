@@ -12,10 +12,11 @@ struct PersonalChatView: View {
     @State private var sidebarState = PersonalChatSidebarState()
     @State private var showingGitHub = false
     @State private var consoleRequest: PersonalChatConsoleRequest?
+    @State private var renameTarget: PersonalChatRenameTarget?
     @State private var deletionTarget: PersonalChatDeletionTarget?
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
     private var isConversationEmpty: Bool { model.messages.isEmpty && model.approvals.isEmpty }
-    private var modalPresented: Bool { model.showingSettings || addingProject || showingGitHub || consoleRequest != nil || deletionTarget != nil }
+    private var modalPresented: Bool { model.showingSettings || addingProject || showingGitHub || consoleRequest != nil || deletionTarget != nil || renameTarget != nil }
     private var newChatLabel: String { String(localized: "personal.new", defaultValue: "New chat", bundle: PersonalChatStrings.bundle) }
     private var motion: Animation? { reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.3) }
 
@@ -52,6 +53,11 @@ struct PersonalChatView: View {
         }
         .sheet(isPresented: $addingProject) {
             PersonalChatProjectSetupView(importer: model.makeProjectImporter(), addProject: model.addProject)
+        }
+        .sheet(item: $renameTarget) { target in
+            PersonalChatRenameView(target: target) { name in
+                try await model.renameSession(target.session.id, to: name, inProject: target.projectID)
+            }
         }
         .sheet(item: $deletionTarget) { target in
             PersonalChatDeletionView(target: target, prepare: { try await model.prepareDeletion(target) }, commit: { planID, confirmation in
@@ -154,6 +160,8 @@ struct PersonalChatView: View {
     private func sessionRow(_ session: PersonalChatSession, projectID: UUID, archived: Bool) -> some View {
         PersonalChatSessionRow(session: session, selected: model.selectedID == session.id, archived: archived) {
             model.selectSession(session.id)
+        } rename: {
+            renameTarget = .init(projectID: projectID, session: session)
         } toggleArchive: {
             Task {
                 await model.setArchived(session.id, archived: !archived, inProject: projectID)

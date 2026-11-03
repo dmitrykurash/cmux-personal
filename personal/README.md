@@ -353,3 +353,20 @@ transcribes a locally synthesized phrase through the production audio converter
 and speech pipeline. This opt-in check may download the English and Russian models; it never
 records the microphone. Actual microphone permission and capture should be checked
 interactively by the app owner after installing the build.
+
+## Chat names and microphone callback fix (0.8.1)
+
+Choose **Rename chat…** from a chat's three-dot or right-click menu, including
+inside Archive. Names are saved locally on this Mac, survive reopening and server
+refreshes, and are used in sidebar search. Renaming does not submit a CLI command,
+restart the session or change an unsent draft. Local names are removed when their
+chat or project is removed. The VPS transcript retains its original title.
+
+The microphone tap now explicitly crosses the audio queue boundary as a Sendable
+callback. Previously Swift inherited MainActor isolation and trapped on the first
+audio buffer. Conversion also follows the actual delivered buffer format when the
+engine negotiates a different format at startup.
+`bash personal/scripts/test-microphone-callback.sh` reproduces that
+boundary using AVAudioEngine's real tap queue and offline synthetic audio; it never
+opens a microphone or speakers. This regression runs in the macOS Actions job in
+addition to the native state and rename checks.

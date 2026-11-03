@@ -32,6 +32,18 @@ actor PersonalChatRepository {
         try write(JSONEncoder().encode(value), to: archiveFile)
     }
 
+    // Local display names never rewrite Claude's transcripts or session identity.
+    private var titlesFile: URL { file.deletingPathExtension().appendingPathExtension("titles.json") }
+
+    func loadTitles() throws -> [String: [String: String]] {
+        guard FileManager.default.fileExists(atPath: titlesFile.path) else { return [:] }
+        return try JSONDecoder().decode([String: [String: String]].self, from: Data(contentsOf: titlesFile))
+    }
+
+    func saveTitles(_ value: [String: [String: String]]) throws {
+        try write(JSONEncoder().encode(value), to: titlesFile)
+    }
+
     private func write(_ data: Data, to destination: URL) throws {
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try data.write(to: destination, options: .atomic)

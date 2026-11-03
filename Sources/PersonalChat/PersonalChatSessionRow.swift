@@ -5,6 +5,7 @@ struct PersonalChatSessionRow: View {
     let selected: Bool
     let archived: Bool
     let select: () -> Void
+    let rename: () -> Void
     let toggleArchive: () -> Void
     let delete: () -> Void
     @Environment(\.colorScheme) private var scheme
@@ -31,6 +32,9 @@ struct PersonalChatSessionRow: View {
     }
 
     @ViewBuilder private var actions: some View {
+        Button(action: rename) {
+            Label(String(localized: "personal.rename.action", defaultValue: "Rename chat…", bundle: PersonalChatStrings.bundle), systemImage: "pencil")
+        }
         Button(action: toggleArchive) {
             Label(actionTitle, systemImage: archived ? "arrow.uturn.backward" : "archivebox")
         }

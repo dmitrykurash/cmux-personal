@@ -28,7 +28,7 @@ final class PersonalChatSpeechMicrophone {
         input = continuation
         try Self.installTap(on: node, source: source, format: format, continuation: continuation, emit: emit)
         tapped = true
-        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { _ in
+        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { @Sendable _ in
             continuation.finish(throwing: PersonalChatSpeechError.interrupted)
         }
         do { engine.prepare(); try engine.start() }
@@ -41,7 +41,8 @@ final class PersonalChatSpeechMicrophone {
                         continuation: AsyncThrowingStream<AnalyzerInput, Error>.Continuation,
                         emit: @escaping @Sendable (PersonalChatSpeechEvent) -> Void) throws {
         let converter = try PersonalChatSpeechAudioConverter(from: source, to: format)
-        node.installTap(onBus: 0, bufferSize: 4096, format: source) { buffer, _ in
+        // AVAudioEngine invokes this block on its own queue, never the UI actor.
+        node.installTap(onBus: 0, bufferSize: 4096, format: source) { @Sendable buffer, _ in
             do {
                 let converted = try converter.convert(buffer)
                 if converted.frameLength > 0 {

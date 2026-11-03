@@ -11,6 +11,7 @@ final class PersonalChatModel {
     private(set) var sessionsLoadError: String?
     private var sessionListRequestID: UUID?
     private(set) var archivedSessionIDs: [String: Set<String>] = [:]
+    private(set) var sessionTitles: [String: [String: String]] = [:]
     var selectedID: String?
     var messages: [PersonalChatMessage] = []
     private(set) var approvals: [PersonalChatApproval] = []
@@ -48,13 +49,36 @@ final class PersonalChatModel {
     }
 
     var project: PersonalChatProject? { projects.first { $0.id == projectID } }
-    var activeSessions: [PersonalChatSession] { sessions.filter { !isArchived($0.id) } }
-    var archivedSessions: [PersonalChatSession] { sessions.filter { isArchived($0.id) } }
+    var activeSessions: [PersonalChatSession] { namedSessions.filter { !isArchived($0.id) } }
+    var archivedSessions: [PersonalChatSession] { namedSessions.filter { isArchived($0.id) } }
     var canSend: Bool { connected && !busy && dictation?.active != true && pendingSend == nil && phase == "ready" && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) }
 
     func startDictation() {
         guard !busy, selectedID != nil else { return }
         dictation?.start(draft: draft) { [weak self] text in self?.draft = text }
+    }
+
+    private var namedSessions: [PersonalChatSession] {
+        let names = projectID.flatMap { sessionTitles[$0.uuidString] } ?? [:]
+        return sessions.map { session in
+            var named = session
+            if let title = names[session.id] { named.title = title }
+            return named
+        }
+    }
+
+    func renameSession(_ id: String, to title: String, inProject targetProjectID: UUID) async throws {
+        guard !busy, projectID == targetProjectID, sessions.contains(where: { $0.id == id }) else {
+            throw PersonalChatRenameError.unavailable
+        }
+        guard let name = PersonalChatRenameError.normalized(title) else { throw PersonalChatRenameError.invalidName }
+        busy = true
+        defer { busy = false }
+        var updated = sessionTitles
+        updated[targetProjectID.uuidString, default: [:]][id] = name
+        // Commit before updating the sidebar; a failed write leaves the old name.
+        try await repository.saveTitles(updated)
+        sessionTitles = updated
     }
 
     func isArchived(_ id: String) -> Bool {
@@ -134,6 +158,7 @@ final class PersonalChatModel {
         do {
             let config = try await repository.load()
             archivedSessionIDs = try await repository.loadArchive()
+            sessionTitles = try await repository.loadTitles()
             connection = config.connection
             projects = config.projects
             projectID = projects.contains { $0.id == config.selectedProjectID } ? config.selectedProjectID : projects.first?.id
@@ -473,6 +498,7 @@ final class PersonalChatModel {
                 }
             }
             archivedSessionIDs[target.project.id.uuidString]?.remove(sessionID)
+            sessionTitles[target.project.id.uuidString]?.removeValue(forKey: sessionID)
             try await save()
         } else {
             let removed = projects.filter { $0.id == target.project.id || (target.permanent && $0.path.hasPrefix(target.project.path + "/")) }
@@ -481,7 +507,10 @@ final class PersonalChatModel {
             let nextProjectID = changeSelection ? remaining.first?.id : projectID
             try await repository.save(.init(connection: connection, projects: remaining, selectedProjectID: nextProjectID, selectedSessionID: changeSelection ? nil : selectedID))
             projects = remaining
-            for project in removed { archivedSessionIDs.removeValue(forKey: project.id.uuidString) }
+            for project in removed {
+                archivedSessionIDs.removeValue(forKey: project.id.uuidString)
+                sessionTitles.removeValue(forKey: project.id.uuidString)
+            }
             if changeSelection {
                 stopRefresh()
                 selectionGeneration = UUID()
@@ -499,6 +528,7 @@ final class PersonalChatModel {
             }
         }
         try await repository.saveArchive(archivedSessionIDs)
+        try await repository.saveTitles(sessionTitles)
     }
 
     func interrupt() async {
