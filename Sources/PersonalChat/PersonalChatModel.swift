@@ -24,6 +24,7 @@ final class PersonalChatModel {
     private(set) var consoleCommand: String?
     var consolePresentationID: UUID?
     var draft = ""
+    let dictation: PersonalChatDictation?
     var attachments: [URL] = []
     var phase = "offline"
     var connected = false
@@ -40,15 +41,21 @@ final class PersonalChatModel {
 
     func makeGitHub() -> PersonalChatGitHub { PersonalChatGitHub(service: service, connection: connection) }
 
-    init(service: any PersonalChatServing, repository: PersonalChatRepository) {
+    init(service: any PersonalChatServing, repository: PersonalChatRepository, dictation: PersonalChatDictation? = nil) {
         self.service = service
         self.repository = repository
+        self.dictation = dictation
     }
 
     var project: PersonalChatProject? { projects.first { $0.id == projectID } }
     var activeSessions: [PersonalChatSession] { sessions.filter { !isArchived($0.id) } }
     var archivedSessions: [PersonalChatSession] { sessions.filter { isArchived($0.id) } }
-    var canSend: Bool { connected && !busy && pendingSend == nil && phase == "ready" && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) }
+    var canSend: Bool { connected && !busy && dictation?.active != true && pendingSend == nil && phase == "ready" && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) }
+
+    func startDictation() {
+        guard !busy, selectedID != nil else { return }
+        dictation?.start(draft: draft) { [weak self] text in self?.draft = text }
+    }
 
     func isArchived(_ id: String) -> Bool {
         guard let projectID else { return false }
@@ -100,6 +107,7 @@ final class PersonalChatModel {
     }
 
     private func clearConversation() {
+        dictation?.cancel(restore: false)
         messages = []
         approvals = []
         approvalError = nil
@@ -247,6 +255,7 @@ final class PersonalChatModel {
 
     func startSession(resume: Bool = false) async {
         guard connected, !busy, let project else { return }
+        dictation?.cancel(restore: false)
         busy = true
         defer { busy = false }
         let id = resume ? selectedID ?? UUID().uuidString.lowercased() : UUID().uuidString.lowercased()

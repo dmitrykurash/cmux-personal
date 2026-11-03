@@ -28,7 +28,7 @@ struct PersonalChatComposer: View {
                                 .padding(.top, 2).allowsHitTesting(false)
                         }
                         PersonalChatTextEditor(
-                            text: $model.draft, editable: !model.busy && model.selectedID != nil,
+                            text: $model.draft, editable: !model.busy && model.selectedID != nil && model.dictation?.active != true,
                             canSubmit: model.canSend, label: placeholder,
                             textColor: NSColor(palette.text), insertionColor: NSColor(palette.text),
                             focusChanged: { focused = $0 }, submit: { Task { await model.send() } }
@@ -53,6 +53,9 @@ struct PersonalChatComposer: View {
                         .help(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
                         .accessibilityLabel(String(localized: "personal.console.open", defaultValue: "Open console", bundle: PersonalChatStrings.bundle))
                     Spacer()
+                    if let dictation = model.dictation {
+                        PersonalChatDictationButton(dictation: dictation, enabled: !model.busy && model.selectedID != nil, start: model.startDictation)
+                    }
                     sendButton
                 }.foregroundStyle(palette.secondary)
             }
@@ -79,6 +82,9 @@ struct PersonalChatComposer: View {
                 addFiles(files)
                 return !files.isEmpty
             } isTargeted: { dropTarget = $0 }
+            if let dictation = model.dictation {
+                PersonalChatDictationStatus(dictation: dictation)
+            }
             if model.selectedID == nil && model.connected && model.project != nil {
                 Button(model.connected ? String(localized: "personal.new", defaultValue: "New chat", bundle: PersonalChatStrings.bundle) : String(localized: "personal.connect", defaultValue: "Connect", bundle: PersonalChatStrings.bundle)) {
                     Task { if model.connected { await model.startSession() } else { await model.connect() } }
@@ -165,6 +171,7 @@ struct PersonalChatComposer: View {
     }
 
     private func chooseFiles() {
+        model.dictation?.cancel(restore: false)
         let panel = NSOpenPanel()
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true

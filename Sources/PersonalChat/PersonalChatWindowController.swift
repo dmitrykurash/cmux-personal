@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class PersonalChatWindowController: NSWindowController {
+final class PersonalChatWindowController: NSWindowController, NSWindowDelegate {
     private let model: PersonalChatModel
 
     init(openTerminal: @escaping (String) -> Void) {
@@ -11,7 +11,7 @@ final class PersonalChatWindowController: NSWindowController {
         let source = sourceURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
         let file = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/cmux-personal/config.json")
-        model = PersonalChatModel(service: PersonalChatService(source: source), repository: PersonalChatRepository(file: file))
+        model = PersonalChatModel(service: PersonalChatService(source: source), repository: PersonalChatRepository(file: file), dictation: PersonalChatDictation(service: PersonalChatSpeechService()))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: 860),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "CheatCode"
@@ -21,9 +21,15 @@ final class PersonalChatWindowController: NSWindowController {
         window.contentView = NSHostingView(rootView: PersonalChatView(model: model, openTerminal: openTerminal))
         window.center()
         super.init(window: window)
+        window.delegate = self
     }
 
     required init?(coder: NSCoder) { nil }
+
+    func windowWillClose(_ notification: Notification) {
+        model.dictation?.cancel(restore: false)
+        model.stopRefresh()
+    }
 
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)

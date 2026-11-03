@@ -15,6 +15,7 @@ struct PersonalChatView: View {
     @State private var deletionTarget: PersonalChatDeletionTarget?
     private var palette: PersonalChatPalette { PersonalChatPalette(scheme: scheme) }
     private var isConversationEmpty: Bool { model.messages.isEmpty && model.approvals.isEmpty }
+    private var modalPresented: Bool { model.showingSettings || addingProject || showingGitHub || consoleRequest != nil || deletionTarget != nil }
     private var newChatLabel: String { String(localized: "personal.new", defaultValue: "New chat", bundle: PersonalChatStrings.bundle) }
     private var motion: Animation? { reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.3) }
 
@@ -36,7 +37,13 @@ struct PersonalChatView: View {
         .foregroundStyle(palette.text).tint(palette.accent).font(PersonalChatTypography.body(13))
         .ignoresSafeArea()
         .task { await model.load() }
-        .onDisappear { model.stopRefresh() }
+        .onDisappear { model.stopRefresh(); model.dictation?.cancel(restore: false) }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            if model.dictation?.phase == .recording { model.dictation?.stop() }
+        }
+        .onChange(of: modalPresented) {
+            if modalPresented { model.dictation?.cancel(restore: false) }
+        }
         .sheet(isPresented: $model.showingSettings) {
             PersonalChatSettingsView(connection: model.connection, busy: model.busy) { connection in
                 model.connection = connection

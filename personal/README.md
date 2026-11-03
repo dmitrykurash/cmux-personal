@@ -330,3 +330,26 @@ A separate real interactive Claude Code smoke test over SSH approved only
 then removed its own session and temporary state. No existing user request was
 approved by the test. The full Ghostty build, notarization and Intel build remain
 outside this local verification.
+
+## On-device dictation (0.8)
+
+Click the microphone beside Send, select English or Russian in the language menu,
+and allow microphone access on the first use. Text appears in the existing draft.
+Stop finishes the transcription and makes it editable; Cancel restores the draft
+from before recording. Nothing is sent until you explicitly press Send.
+
+Dictation requires macOS 26 and an available Apple speech model. It uses
+SpeechAnalyzer with SpeechTranscriber, or DictationTranscriber for languages such
+as Russian. Models may download on first use; recognition runs on the Mac and no
+audio is uploaded to the VPS or a transcription API. The app stops recording when
+it loses focus, and cancels capture when the chat changes or its view closes.
+Changing the system input device interrupts capture and preserves recognized text.
+The rest of the application continues to support macOS 14.
+
+Native checks cover transcript revisions, cancellation, finalization, language
+selection, errors and late callbacks across chats, without requesting microphone
+access. On macOS 26, `bash personal/scripts/test-speech-engine.sh` additionally
+transcribes a locally synthesized phrase through the production audio converter
+and speech pipeline. This opt-in check may download the English and Russian models; it never
+records the microphone. Actual microphone permission and capture should be checked
+interactively by the app owner after installing the build.

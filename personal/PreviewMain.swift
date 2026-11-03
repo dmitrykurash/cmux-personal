@@ -13,7 +13,7 @@ struct PersonalChatPreview: App {
         let source = url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
         let file = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/cmux-personal/config.json")
-        _model = State(initialValue: PersonalChatModel(service: PersonalChatService(source: source), repository: PersonalChatRepository(file: file)))
+        _model = State(initialValue: PersonalChatModel(service: PersonalChatService(source: source), repository: PersonalChatRepository(file: file), dictation: PersonalChatDictation(service: PersonalChatSpeechService())))
     }
 
     var body: some Scene {
