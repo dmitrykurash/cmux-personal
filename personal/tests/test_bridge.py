@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timezone
 import importlib.util
 import json
 from pathlib import Path
@@ -97,6 +98,80 @@ class BridgeTests(unittest.TestCase):
             result = bridge.send(self.sid, "/usage")
         self.assertEqual(bridge.read_status(self.sid), "console", "A CLI screen never emits a normal assistant Stop event")
         self.assertEqual(result.get("consoleCommand"), "/usage")
+
+    def local_command_fixture(self, timestamp, command='/effort', args=''):
+        stamp = datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+        return self.fixture([
+            {'type': 'user', 'uuid': 'command', 'cwd': str(self.project), 'timestamp': stamp,
+             'message': {'content': f'<command-name>{command}</command-name>\n<command-message>{command[1:]}</command-message>\n<command-args>{args}</command-args>'}},
+            {'type': 'user', 'uuid': 'output', 'timestamp': stamp,
+             'message': {'content': '<local-command-stdout>Effort updated.</local-command-stdout>'}},
+        ])
+
+    def read_with_prompt(self, screen=None, cursor='2,2,1'):
+        if screen is None:
+            screen = 'old output\n──────────────── ultracode ─\n❯\u00a0\n────────────────\n  ? for shortcuts\n'
+        def capture(*args, **kwargs):
+            self.assertIn(args[0], ('capture-pane', 'display-message'), 'Status reconciliation must never send keys')
+            return subprocess.CompletedProcess(args, 0, (screen if args[0] == 'capture-pane' else cursor).encode(), b'')
+        with patch.object(bridge, 'alive', return_value=True), patch.object(bridge, 'tmux', side_effect=capture):
+            return bridge.dispatch({'op': 'read', 'id': self.sid, 'project': str(self.project)})
+
+    def test_effort_is_a_local_command_and_submit_hook_preserves_that_state(self):
+        bridge.set_status(self.sid, 'ready')
+        with patch.object(bridge, 'alive', return_value=True), patch.object(bridge, 'tmux'):
+            result = bridge.send(self.sid, '/effort high')
+        self.assertEqual(result['phase'], 'console')
+        self.assertEqual(result['consoleCommand'], '/effort')
+        bridge.hook(self.sid, {'hook_event_name': 'UserPromptSubmit', 'prompt': '/effort high'})
+        self.assertEqual(bridge.read_status(self.sid), 'console')
+
+    def test_finished_effort_recovers_stale_busy_without_closing_terminal(self):
+        with patch.object(bridge.time, 'time', return_value=100):
+            bridge.set_status(self.sid, 'busy')
+        self.local_command_fixture(134)
+        reply = self.read_with_prompt()
+        self.assertEqual(reply['phase'], 'ready', 'A completed local command has no assistant Stop hook')
+        self.assertEqual([(m['role'], m['text']) for m in reply['messages']],
+                         [('user', '/effort'), ('system', 'Effort updated.')], 'Command acknowledgement and output must not expose CLI markup')
+
+    def test_completed_console_command_returns_to_chat_while_panel_stays_open(self):
+        with patch.object(bridge.time, 'time', return_value=100), patch.object(bridge, 'alive', return_value=True), patch.object(bridge, 'tmux'):
+            bridge.set_status(self.sid, 'ready')
+            bridge.send(self.sid, '/model')
+        self.local_command_fixture(101, '/model', 'example-model')
+        self.assertEqual(self.read_with_prompt()['phase'], 'ready')
+
+    def test_old_local_output_never_clears_a_new_turn_or_protected_phase(self):
+        self.local_command_fixture(100)
+        for phase in ('busy', 'permission', 'attention', 'offline', 'starting'):
+            with self.subTest(phase=phase), patch.object(bridge.time, 'time', return_value=101):
+                bridge.set_status(self.sid, phase)
+                self.assertEqual(self.read_with_prompt()['phase'], phase)
+        with patch.object(bridge.time, 'time', return_value=99):
+            bridge.set_status(self.sid, 'busy')
+        path = self.local_command_fixture(100)
+        with path.open('a') as stream:
+            stream.write('\n' + json.dumps({'type': 'user', 'message': {'content': 'A new task'}}) + '\n')
+        self.assertEqual(self.read_with_prompt()['phase'], 'busy')
+
+    def test_completion_does_not_override_actual_work_draft_or_permission(self):
+        self.local_command_fixture(101)
+        screen = 'old output\n──────────────── high ─\n❯\u00a0\n────────────────\n'
+        for phase, changed, cursor in [
+            ('busy', screen + 'esc to interrupt', '2,2,1'),
+            ('busy', screen.replace('❯\u00a0', '❯ draft'), '2,2,1'),
+            ('busy', screen, '2,2,0'),
+            ('permission', screen, '2,2,1'),
+        ]:
+            with self.subTest(phase=phase, cursor=cursor), patch.object(bridge.time, 'time', return_value=100):
+                bridge.set_status(self.sid, phase)
+                self.assertEqual(self.read_with_prompt(changed, cursor)['phase'], phase)
+
+    def test_idle_prompt_uses_current_footer_not_old_interrupt_text(self):
+        screen = 'old esc to interrupt\n──────────────── ultracode ─\n❯\u00a0\n────────────────\n  ? for shortcuts\n'
+        self.assertTrue(bridge.console_prompt_is_idle(screen, '2,2,1'))
+        self.assertFalse(bridge.console_prompt_is_idle(screen + 'esc to interrupt', '2,2,1'))
 
     def test_console_return_checks_actual_main_prompt_without_sending_keys(self):
         screen = "old output\n────────────────\n❯\u00a0\n────────────────\n  ? for shortcuts\n"
