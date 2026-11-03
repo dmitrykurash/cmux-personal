@@ -173,6 +173,45 @@ class BridgeTests(unittest.TestCase):
         self.assertTrue(bridge.console_prompt_is_idle(screen, '2,2,1'))
         self.assertFalse(bridge.console_prompt_is_idle(screen + 'esc to interrupt', '2,2,1'))
 
+    def test_console_submit_keeps_active_work_and_permissions_protected(self):
+        for phase in ('busy', 'permission', 'attention'):
+            bridge.set_status(self.sid, phase)
+            before = bridge.status_snapshot(self.sid)
+            bridge.hook(self.sid, {'hook_event_name': 'UserPromptSubmit', 'prompt': '/effort high'})
+            self.assertEqual(bridge.status_snapshot(self.sid), before)
+        bridge.set_status(self.sid, 'ready')
+        with patch.object(bridge.time, 'time', return_value=100):
+            bridge.hook(self.sid, {'hook_event_name': 'UserPromptSubmit', 'prompt': '/effort high'})
+        self.local_command_fixture(101)
+        with patch.object(bridge.time, 'time', return_value=102):
+            bridge.hook(self.sid, {'hook_event_name': 'UserPromptSubmit', 'prompt': '/effort high'})
+        self.assertEqual(self.read_with_prompt()['phase'], 'console', 'Previous output cannot complete a repeated command')
+
+    def test_local_completion_cannot_overwrite_newer_status_during_capture(self):
+        with patch.object(bridge.time, 'time', return_value=100):
+            bridge.set_status(self.sid, 'busy')
+        self.local_command_fixture(101)
+        def capture(*args, **kwargs):
+            bridge.set_status(self.sid, 'permission')
+            value = 'output\n────────────────\n❯\u00a0\n────────────────\n' if args[0] == 'capture-pane' else '2,2,1'
+            return subprocess.CompletedProcess(args, 0, value.encode(), b'')
+        with patch.object(bridge, 'alive', return_value=True), patch.object(bridge, 'tmux', side_effect=capture):
+            reply = bridge.dispatch({'op': 'read', 'id': self.sid, 'project': str(self.project)})
+        self.assertEqual(reply['phase'], 'permission')
+
+    def test_incomplete_or_custom_command_records_do_not_release_busy(self):
+        with patch.object(bridge.time, 'time', return_value=100):
+            bridge.set_status(self.sid, 'busy')
+        self.local_command_fixture(101, '/my-skill')
+        self.assertEqual(self.read_with_prompt()['phase'], 'busy')
+        path = self.local_command_fixture(101)
+        entries = list(bridge.records(path))
+        entries[-1].pop('timestamp')
+        self.fixture(entries)
+        self.assertEqual(self.read_with_prompt()['phase'], 'busy')
+        self.fixture(entries[:1])
+        self.assertEqual(self.read_with_prompt()['phase'], 'busy')
+
     def test_console_return_checks_actual_main_prompt_without_sending_keys(self):
         screen = "old output\n────────────────\n❯\u00a0\n────────────────\n  ? for shortcuts\n"
         def capture(*args, **kwargs):

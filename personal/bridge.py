@@ -6,6 +6,8 @@ by a dedicated tmux server. Never leave a shell behind when Claude exits.
 """
 import base64
 import contextlib
+from collections import deque
+from datetime import datetime
 import fcntl
 import json
 import os
@@ -365,6 +367,7 @@ def text_content(content):
 def messages(path):
     result = []
     seen = set()
+    previous_command = None
     if not path:
         return result
     for i, record in enumerate(records(path)):
@@ -378,6 +381,13 @@ def messages(path):
         if rid in seen:
             continue
         seen.add(rid)
+        command = transcript_command(text) if role == 'user' else None
+        output = local_command_output(text) if role == 'user' and previous_command else None
+        if command:
+            text = command
+        elif output is not None:
+            role, text = 'system', output
+        previous_command = command
         if text:
             result.append({"id": rid, "role": role, "text": text})
         if isinstance(content, list):
@@ -469,10 +479,13 @@ def upload(sid, name, encoded):
 # skills (and /compact, /review, etc.) retain the normal chat/hook lifecycle.
 CONSOLE_COMMANDS = frozenset(('/usage', '/mcp', '/status', '/help', '/model', '/config',
                               '/permissions', '/stats', '/cost', '/context', '/theme',
-                              '/doctor', '/login', '/logout', '/plugins', '/plugin', '/agents'))
+                              '/doctor', '/login', '/logout', '/plugins', '/plugin', '/agents',
+                              '/effort', '/fast'))
 
 
 def console_command(text):
+    if not isinstance(text, str):
+        return None
     value = text.strip()
     if "\n" in value or not value:
         return None
@@ -480,12 +493,54 @@ def console_command(text):
     return command if command in CONSOLE_COMMANDS else None
 
 
-def console_state(sid):
+def transcript_command(text):
+    # Recognize only the CLI's complete local-command record, not arbitrary
+    # embedded markup or custom skills that can run a normal assistant turn.
+    match = re.fullmatch(r'<command-name>(/[^<>\s]+)</command-name>\s*'
+                         r'<command-message>[^<>]*</command-message>\s*'
+                         r'<command-args>(.*?)</command-args>', text.strip(), re.DOTALL)
+    if match:
+        value = (match[1] + ' ' + match[2].strip()).strip()
+        return value if console_command(value) else None
+    return None
+
+
+def local_command_output(text):
+    match = re.fullmatch(r'<local-command-(stdout|stderr)>(.*?)</local-command-\1>', text.strip(), re.DOTALL)
+    return match[2] if match else None
+
+
+def status_snapshot(sid):
     try:
-        value = json.loads((ROOT / (session_id(sid) + ".status")).read_text())
-        return value if value.get('phase') == 'console' and value.get('consoleCommand') in CONSOLE_COMMANDS else None
+        return json.loads((ROOT / (session_id(sid) + ".status")).read_text())
     except (OSError, ValueError):
-        return None
+        return {}
+
+
+def console_state(sid):
+    value = status_snapshot(sid)
+    return value if value.get('phase') == 'console' and value.get('consoleCommand') in CONSOLE_COMMANDS else None
+
+
+def local_command_completed(path, status):
+    if path is None:
+        return False
+    # An old completion cannot release a new send reservation, even while the
+    # CLI still shows its old empty prompt. Later conversational records also
+    # invalidate the completion. No timer guesses or terminal input are used.
+    tail = deque((r for r in records(path) if r.get('type') in ('user', 'assistant')
+                  and not r.get('isMeta') and not r.get('isSidechain')), maxlen=2)
+    if len(tail) != 2 or any(r.get('type') != 'user' for r in tail):
+        return False
+    command = transcript_command(text_content(tail[0].get('message', {}).get('content', '')))
+    output = local_command_output(text_content(tail[1].get('message', {}).get('content', '')))
+    if not command or output is None or (status.get('consoleCommand') and console_command(command) != status['consoleCommand']):
+        return False
+    try:
+        stamps = [datetime.fromisoformat(r['timestamp'].replace('Z', '+00:00')) for r in tail]
+        return all(stamp.tzinfo is not None and stamp.timestamp() >= status['time'] for stamp in stamps)
+    except (ValueError, TypeError, KeyError):
+        return False
 
 
 def console_prompt_is_idle(screen, cursor):
@@ -498,27 +553,31 @@ def console_prompt_is_idle(screen, cursor):
     lines = screen.splitlines()
     if visible != 1 or column != 2 or not 0 < row < len(lines) - 1 or lines[row].strip() != '❯':
         return False
-    if any(not re.fullmatch(r'[─━]{8,}', lines[index].strip()) for index in (row - 1, row + 1)):
+    # Newer CLI versions put an effort label inside the upper input rule.
+    if not re.fullmatch(r'[─━]{8,}(?: [\w ./-]{1,40} [─━]+)?', lines[row - 1].strip()):
         return False
-    return not any(label in screen.lower() for label in ('esc to interrupt', 'escape to interrupt'))
+    if not re.fullmatch(r'[─━]{8,}', lines[row + 1].strip()):
+        return False
+    footer = '\n'.join(lines[row + 1:]).lower()
+    return not any(label in footer for label in ('esc to interrupt', 'escape to interrupt'))
 
 
 def reconcile_console(sid, returning=False):
     with lifecycle_lock(), session_lock(sid):
-        metadata(sid)
-        before = console_state(sid)
-        if before is None:
+        meta = metadata(sid)
+        before = status_snapshot(sid)
+        if before.get('phase') not in ('busy', 'console'):
             return
-        if returning:
+        if returning and before['phase'] == 'console':
             before['returned'] = True
             atomic_json(ROOT / (sid + '.status'), before)
-        if not before.get('returned'):
+        if not before.get('returned') and not local_command_completed(transcript(sid, Path(meta['project'])), before):
             return
         screen = tmux('capture-pane', '-p', '-t', target(sid) + ':').stdout.decode(errors='replace')
         cursor = tmux('display-message', '-p', '-t', target(sid) + ':', '#{cursor_y},#{cursor_x},#{cursor_flag}').stdout.decode(errors='replace')
         # A prompt submitted in the console clears this marker through its hook.
         # Never overwrite a newer busy/permission/ended state.
-        if console_state(sid) == before and console_prompt_is_idle(screen, cursor):
+        if status_snapshot(sid) == before and console_prompt_is_idle(screen, cursor):
             set_status(sid, 'ready')
 
 
@@ -1169,7 +1228,7 @@ def dispatch(request):
                     if not (ROOT / "deleted" / sid).exists():
                         atomic_json(ROOT / (sid + ".ui.json"), {"time": time.time()})
                         approvals = pending_permissions(sid, project)
-        if live and managed and console_state(sid):
+        if live and managed and read_status(sid) in ('console', 'busy'):
             reconcile_console(sid)
         command = console_state(sid) if live and managed else None
         return {"consoleCommand": command['consoleCommand'] if command else None, "messages": messages(transcript(sid, project)), "phase": "permission" if approvals else read_status(sid) if live and managed else "offline", "live": live and managed, "approvals": approvals}
@@ -1199,7 +1258,17 @@ def hook(sid, event):
         private_dir(ROOT)
         with session_lock(sid):
             if not (ROOT / "deleted" / sid).exists():
-                set_status(sid, phase)
+                command = console_command(event.get('prompt', '')) if name == 'UserPromptSubmit' else None
+                before = status_snapshot(sid)
+                if command and before.get('phase') == 'console' and before.get('consoleCommand') == command and not before.get('submitted'):
+                    # The first submit acknowledges a native send. Repeated
+                    # console submissions get a fresh timestamp below.
+                    before['submitted'] = True
+                    atomic_json(ROOT / (sid + '.status'), before)
+                elif command and before.get('phase') in ('ready', 'console'):
+                    atomic_json(ROOT / (sid + '.status'), {'phase': 'console', 'consoleCommand': command, 'time': time.time(), 'submitted': True})
+                elif not command or before.get('phase') not in ('busy', 'permission', 'attention'):
+                    set_status(sid, phase)
     if name == "PermissionRequest":
         return request_permission(sid, event)
 

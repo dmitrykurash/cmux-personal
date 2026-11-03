@@ -54,8 +54,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>CheatCode</string>
 <key>CFBundleDisplayName</key><string>CheatCode</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.9.2</string>
-<key>CFBundleVersion</key><string>15</string>
+<key>CFBundleShortVersionString</key><string>0.9.3</string>
+<key>CFBundleVersion</key><string>16</string>
 <key>NSMicrophoneUsageDescription</key><string>CheatCode uses your microphone for on-device dictation into your message draft. Audio stays on your Mac.</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>

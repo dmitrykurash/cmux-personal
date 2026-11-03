@@ -413,3 +413,16 @@ The black terminal surface reaches the top, right and bottom window edges,
 including the title-bar area. It has no inset card, rounded frame or outer margin.
 The chat keeps its rounded surface and an 8-point gutter beside the resizable
 terminal. The floating close button and default-open behavior are unchanged.
+
+### Local command completion (0.9.3)
+
+`/effort` and `/fast` use the CLI command lifecycle instead of waiting for an
+assistant reply. Completed local commands return the composer to ready while the
+terminal stays open. Existing stale busy states recover only when a matching,
+newer command/output pair ends the conversation transcript and the CLI shows its
+empty main prompt. The check supports effort labels in the input rule and ignores
+historical interrupt hints above it. Active interrupt footers, drafts, permissions,
+newer turns and unknown layouts prevent recovery. Status checks send no keys.
+
+The chat displays recognized command records and their output without internal
+XML tags. The normalized user record also acknowledges an older pending send.
