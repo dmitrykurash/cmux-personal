@@ -32,17 +32,19 @@ struct PersonalChatView: View {
         HStack(spacing: sidebarVisible ? 10 : 0) {
             sidebar.frame(width: 250).frame(width: sidebarVisible ? 250 : 0, alignment: .leading)
                 .opacity(sidebarVisible ? 1 : 0).clipped().accessibilityHidden(!sidebarVisible)
+                .padding(.leading, 10).padding(.vertical, 10)
             HSplitView {
                 conversation.frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.trailing, console.presented ? 4 : 0)
+                    .padding(.top, sidebarVisible ? 10 : 38).padding(.bottom, 10)
+                    // The native divider supplies the final point of the gutter.
+                    .padding(.trailing, console.presented ? 7 : 10)
                 if console.presented {
                     PersonalChatConsolePane(state: console, model: model)
                         .frame(minWidth: 320, idealWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.leading, 4)
                 }
-            }.padding(.top, sidebarVisible ? 0 : 28)
+            }
         }
-        .padding(10).frame(minWidth: console.presented && sidebarVisible ? 1010 : 750, minHeight: 560)
+        .frame(minWidth: console.presented && sidebarVisible ? 1010 : 750, minHeight: 560)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
         .background {
             ZStack {

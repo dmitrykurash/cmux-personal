@@ -406,3 +406,10 @@ The right panel has a darker background, rounded outer border and an 8-point
 content gap around the native resizing divider. Terminal content fills the panel
 with a floating close button; the title bar and persistent footer are removed.
 Connection and Resume/Retry controls appear only when needed.
+
+### Edge-to-edge terminal (0.9.2)
+
+The black terminal surface reaches the top, right and bottom window edges,
+including the title-bar area. It has no inset card, rounded frame or outer margin.
+The chat keeps its rounded surface and an 8-point gutter beside the resizable
+terminal. The floating close button and default-open behavior are unchanged.

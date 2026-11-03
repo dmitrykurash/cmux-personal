@@ -55,9 +55,11 @@ struct PersonalChatConsolePane: View {
             .padding(10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: Self.backgroundColor)).foregroundStyle(palette.secondary)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(palette.border))
+        .background {
+            Color(nsColor: Self.backgroundColor)
+                .ignoresSafeArea(.container, edges: [.top, .trailing, .bottom])
+        }
+        .foregroundStyle(palette.secondary)
         .environment(\.colorScheme, .dark)
         .onChange(of: state.request?.id) { ended = false }
     }
