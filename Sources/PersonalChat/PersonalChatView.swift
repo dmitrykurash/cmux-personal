@@ -25,7 +25,7 @@ struct PersonalChatView: View {
     init(model: PersonalChatModel, openTerminal: @escaping (String) -> Void) {
         self.model = model
         self.openTerminal = openTerminal
-        _console = State(initialValue: PersonalChatConsoleState(model: model))
+        _console = State(initialValue: PersonalChatConsoleState(model: model, opensForChats: PersonalChatConsolePane.supported))
     }
 
     private var mainLayout: some View {
@@ -34,9 +34,11 @@ struct PersonalChatView: View {
                 .opacity(sidebarVisible ? 1 : 0).clipped().accessibilityHidden(!sidebarVisible)
             HSplitView {
                 conversation.frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.trailing, console.presented ? 4 : 0)
                 if console.presented {
                     PersonalChatConsolePane(state: console, model: model)
                         .frame(minWidth: 320, idealWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.leading, 4)
                 }
             }.padding(.top, sidebarVisible ? 0 : 28)
         }
@@ -55,7 +57,7 @@ struct PersonalChatView: View {
 
     var body: some View {
         mainLayout
-        .task { await model.load() }
+        .task { await model.load(); console.reconcile() }
         .onDisappear { model.stopRefresh(); model.dictation?.cancel(restore: false) }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             if model.dictation?.phase == .recording { model.dictation?.stop() }
@@ -88,7 +90,10 @@ struct PersonalChatView: View {
         .onChange(of: model.busy) { if !model.busy { console.reconcile() } }
         .onChange(of: model.phase) { console.reconcile() }
         .onChange(of: console.presented) {
-            if !console.presented && sidebarHiddenForConsole {
+            if console.presented && sidebarVisible && contentWidth < 1100 {
+                sidebarHiddenForConsole = true
+                sidebarVisible = false
+            } else if !console.presented && sidebarHiddenForConsole {
                 sidebarVisible = true
                 sidebarHiddenForConsole = false
             }
@@ -421,10 +426,6 @@ struct PersonalChatView: View {
         guard let id = model.selectedID else { return }
         model.dictation?.cancel(restore: false)
         if PersonalChatConsolePane.supported {
-            if !console.presented && sidebarVisible && contentWidth < 1100 {
-                sidebarHiddenForConsole = true
-                sidebarVisible = false
-            }
             console.open()
         } else {
             Task {

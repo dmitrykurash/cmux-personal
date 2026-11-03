@@ -28,7 +28,7 @@ struct ConsolePaneChecks {
         model.selectedID = UUID().uuidString; model.connected = true; model.phase = "ready"
         model.connection = .init(host: "example.invalid")
         model.draft = "Preserve this draft."
-        let pane = PersonalChatConsoleState(model: model)
+        let pane = PersonalChatConsoleState(model: model, opensForChats: false)
         pane.open()
         try await DictationChecks.wait { !pane.opening }
         model.stopRefresh()
@@ -76,6 +76,31 @@ struct ConsolePaneChecks {
         pane.close()
         // Let the close task restore routing before shutting the fixture down.
         await Task.yield(); model.stopRefresh()
-        print("Console pane checks passed: stable PTY identity, explicit handoffs, close/selection races, saved-session resume and draft preservation.")
+        let beforeAutomatic = await service.handoffs
+        let automatic = PersonalChatConsoleState(model: model)
+        automatic.reconcile()
+        precondition(automatic.presented && automatic.request != nil && automatic.focusID == nil)
+        let automaticID = automatic.request?.id
+        automatic.reconcile()
+        precondition(automatic.request?.id == automaticID)
+        await model.refresh(); model.stopRefresh()
+        let automaticOptIns = await service.optIns
+        let afterAutomatic = await service.handoffs
+        precondition(beforeAutomatic == afterAutomatic && automaticOptIns.last == true, "Default opening must preserve native approvals without a permission handoff")
+        automatic.close()
+        automatic.reconcile(); automatic.reconcile()
+        precondition(!automatic.presented && automatic.request == nil, "Closing must stick through subsequent refreshes")
+        model.selectedID = UUID().uuidString
+        automatic.reconcile()
+        precondition(automatic.presented && automatic.request != nil && automatic.focusID == nil, "A different chat opens its console by default without taking keyboard focus")
+        model.selectedID = nil
+        automatic.reconcile()
+        precondition(!automatic.presented && automatic.request == nil)
+        let unsupported = PersonalChatConsoleState(model: model, opensForChats: false)
+        model.selectedID = UUID().uuidString
+        unsupported.reconcile()
+        precondition(!unsupported.presented && unsupported.request == nil, "A build with another terminal provider must not show an empty pane")
+        await Task.yield(); model.stopRefresh()
+        print("Console pane checks passed: passive default opening, close persistence, focus intent, stable PTY identity, explicit handoffs, close/selection races, saved-session resume and draft preservation.")
     }
 }

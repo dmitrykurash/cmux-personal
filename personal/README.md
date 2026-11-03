@@ -393,3 +393,16 @@ retain any recognized text for editing. Nothing is automatically sent.
 `bash personal/scripts/test-editor-layout.sh` checks measurement purity, wrapping
 and bounded height. The native state checks cover deferred transcription and
 console attachment identity, permission handoff, chat changes and close races.
+
+### Terminal presentation (0.9.1)
+
+The terminal opens by default when selecting a chat or restoring it at launch.
+Closing it keeps it closed for that selection through refreshes; selecting another
+chat opens that chat's terminal. Default opening is a passive attachment: it does
+not move keyboard focus or hand native approval requests to the CLI. Explicit
+Open console actions still focus the terminal and perform the existing handoff.
+
+The right panel has a darker background, rounded outer border and an 8-point
+content gap around the native resizing divider. Terminal content fills the panel
+with a floating close button; the title bar and persistent footer are removed.
+Connection and Resume/Retry controls appear only when needed.

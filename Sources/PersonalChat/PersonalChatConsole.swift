@@ -13,8 +13,10 @@ struct PersonalChatConsoleRequest: Identifiable {
 struct PersonalChatConsolePane: View {
     @Bindable var state: PersonalChatConsoleState
     @Bindable var model: PersonalChatModel
-    @Environment(\.colorScheme) private var scheme
     @State private var ended = false
+    static var backgroundColor: NSColor {
+        NSColor(calibratedRed: 0.035, green: 0.035, blue: 0.043, alpha: 1)
+    }
     static var supported: Bool {
         #if canImport(SwiftTerm)
         true
@@ -23,78 +25,77 @@ struct PersonalChatConsolePane: View {
         #endif
     }
     var body: some View {
-        let palette = PersonalChatPalette(scheme: scheme)
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "terminal").foregroundStyle(palette.secondary)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(model.consoleCommand ?? String(localized: "personal.console.title", defaultValue: "Remote console", bundle: PersonalChatStrings.bundle))
-                        .font(PersonalChatTypography.body(13, weight: .medium)).lineLimit(1)
-                    Text(model.sessions.first(where: { $0.id == model.selectedID })?.title ?? model.project?.name ?? "")
-                        .font(PersonalChatTypography.body(11)).foregroundStyle(palette.muted).lineLimit(1)
+        let palette = PersonalChatPalette(scheme: .dark)
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let request = state.request {
+                    #if canImport(SwiftTerm)
+                    PersonalChatTerminalSurface(command: request.command, focusID: state.focusID, ended: { if state.request?.id == request.id { ended = true } })
+                        .id(request.id).padding(8)
+                    #endif
+                } else {
+                    connectionState
                 }
-                Spacer(minLength: 0)
-                if ended || state.failed {
-                    Button(action: state.reconnect) { Image(systemName: "arrow.clockwise").frame(width: 28, height: 28) }
-                        .buttonStyle(PersonalChatHoverStyle(radius: 7)).disabled(model.busy || !model.connected)
-                        .accessibilityLabel(String(localized: "personal.console.reconnect", defaultValue: "Reconnect console", bundle: PersonalChatStrings.bundle))
-                }
-                Button(action: state.close) { Image(systemName: "xmark").frame(width: 28, height: 28) }
-                    .buttonStyle(PersonalChatHoverStyle(radius: 7))
-                    .help(String(localized: "personal.console.close", defaultValue: "Close console", bundle: PersonalChatStrings.bundle))
-                    .accessibilityLabel(String(localized: "personal.console.close", defaultValue: "Close console", bundle: PersonalChatStrings.bundle))
-                    .accessibilityIdentifier("personal.console.close")
-            }.padding(14)
-            Divider().overlay(palette.border)
-            if let request = state.request {
-                #if canImport(SwiftTerm)
-                PersonalChatTerminalSurface(command: request.command, focusID: state.focusID, ended: { if state.request?.id == request.id { ended = true } })
-                    .id(request.id).padding(8)
-                #endif
-            } else {
-                VStack(spacing: 14) {
-                    if state.opening || model.busy { ProgressView().controlSize(.small) }
-                    Text(model.selectedID == nil
-                         ? String(localized: "personal.console.select", defaultValue: "Select a chat to open its console.", bundle: PersonalChatStrings.bundle)
-                         : model.phase == "offline"
-                         ? String(localized: "personal.saved", defaultValue: "Saved conversation", bundle: PersonalChatStrings.bundle)
-                         : state.failed || !model.connected
-                         ? String(localized: "personal.console.ended", defaultValue: "Console disconnected. Your saved chat is still available.", bundle: PersonalChatStrings.bundle)
-                         : String(localized: "personal.console.connecting", defaultValue: "Connecting to your session…", bundle: PersonalChatStrings.bundle))
-                        .font(PersonalChatTypography.body(12)).foregroundStyle(palette.secondary)
-                        .multilineTextAlignment(.center)
-                    if model.selectedID != nil && model.phase == "offline" {
-                        Button(String(localized: "personal.resume", defaultValue: "Resume session", bundle: PersonalChatStrings.bundle)) { Task { await model.startSession(resume: true) } }
-                            .buttonStyle(.bordered).disabled(!model.connected || model.busy)
-                    }
-                }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            if ended {
+                Button(String(localized: "personal.console.reconnect", defaultValue: "Reconnect console", bundle: PersonalChatStrings.bundle), action: state.reconnect)
+                    .buttonStyle(.bordered).disabled(model.busy || !model.connected)
+                    .padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
-            Divider().overlay(palette.border)
-            Text(ended
-                 ? String(localized: "personal.console.ended", defaultValue: "Console disconnected. Your saved chat is still available.", bundle: PersonalChatStrings.bundle)
-                 : String(localized: "personal.console.note", defaultValue: "Your live VPS session. Closing this panel keeps Claude running.", bundle: PersonalChatStrings.bundle))
-                .font(PersonalChatTypography.body(10.5)).foregroundStyle(palette.muted)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            Button(action: state.close) {
+                Image(systemName: "xmark").font(.system(size: 11, weight: .medium))
+                    .frame(width: 30, height: 30)
+                    .background(Color(white: 0.14).opacity(0.96), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.12)))
+            }
+            .buttonStyle(PersonalChatHoverStyle(radius: 8))
+            .help(String(localized: "personal.console.close", defaultValue: "Close console", bundle: PersonalChatStrings.bundle))
+            .accessibilityLabel(String(localized: "personal.console.close", defaultValue: "Close console", bundle: PersonalChatStrings.bundle))
+            .accessibilityIdentifier("personal.console.close")
+            .padding(10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.canvas).foregroundStyle(palette.text)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(palette.border))
+        .background(Color(nsColor: Self.backgroundColor)).foregroundStyle(palette.secondary)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(palette.border))
+        .environment(\.colorScheme, .dark)
         .onChange(of: state.request?.id) { ended = false }
+    }
+
+    private var connectionState: some View {
+        VStack(spacing: 14) {
+            if state.opening || model.busy { ProgressView().controlSize(.small) }
+            Text(model.selectedID == nil
+                 ? String(localized: "personal.console.select", defaultValue: "Select a chat to open its console.", bundle: PersonalChatStrings.bundle)
+                 : model.phase == "offline"
+                 ? String(localized: "personal.saved", defaultValue: "Saved conversation", bundle: PersonalChatStrings.bundle)
+                 : state.failed || !model.connected
+                 ? String(localized: "personal.console.ended", defaultValue: "Console disconnected. Your saved chat is still available.", bundle: PersonalChatStrings.bundle)
+                 : String(localized: "personal.console.connecting", defaultValue: "Connecting to your session…", bundle: PersonalChatStrings.bundle))
+                .font(PersonalChatTypography.body(12)).multilineTextAlignment(.center)
+            if model.selectedID != nil && model.phase == "offline" {
+                Button(String(localized: "personal.resume", defaultValue: "Resume session", bundle: PersonalChatStrings.bundle)) { Task { await model.startSession(resume: true) } }
+                    .buttonStyle(.bordered).disabled(!model.connected || model.busy)
+            } else if state.failed {
+                Button(String(localized: "personal.console.reconnect", defaultValue: "Reconnect console", bundle: PersonalChatStrings.bundle), action: state.reconnect)
+                    .buttonStyle(.bordered).disabled(!model.connected || model.busy)
+            }
+        }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 #if canImport(SwiftTerm)
 struct PersonalChatTerminalSurface: NSViewRepresentable {
     let command: String
-    var focusID = UUID()
+    var focusID: UUID? = nil
     let ended: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(ended: ended) }
     func makeNSView(context: Context) -> TerminalView {
         let view = FocusedTerminal(frame: NSRect(x: 0, y: 0, width: 920, height: 550))
         view.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
-        view.nativeBackgroundColor = NSColor(calibratedRed: 0.078, green: 0.078, blue: 0.086, alpha: 1)
+        view.nativeBackgroundColor = PersonalChatConsolePane.backgroundColor
         view.nativeForegroundColor = NSColor(calibratedWhite: 0.94, alpha: 1)
+        if focusID != nil { view.focusWhenAttached() }
         view.terminalDelegate = context.coordinator
         context.coordinator.view = view
         let process = LocalProcess(delegate: context.coordinator, dispatchQueue: .main)
@@ -109,7 +110,7 @@ struct PersonalChatTerminalSurface: NSViewRepresentable {
     func updateNSView(_ nsView: TerminalView, context: Context) {
         if context.coordinator.focusID != focusID {
             context.coordinator.focusID = focusID
-            nsView.window?.makeFirstResponder(nsView)
+            if focusID != nil { (nsView as? FocusedTerminal)?.focusWhenAttached() }
         }
     }
     static func dismantleNSView(_ nsView: TerminalView, coordinator: Coordinator) {
@@ -124,7 +125,14 @@ struct PersonalChatTerminalSurface: NSViewRepresentable {
         nsView.terminalDelegate = nil
     }
     private final class FocusedTerminal: TerminalView {
-        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); window?.makeFirstResponder(self) }
+        private var focusPending = false
+        func focusWhenAttached() { focusPending = true; applyFocus() }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); applyFocus() }
+        private func applyFocus() {
+            guard focusPending, let window else { return }
+            focusPending = false
+            window.makeFirstResponder(self)
+        }
     }
     @MainActor final class Coordinator: NSObject, @preconcurrency TerminalViewDelegate, @preconcurrency LocalProcessDelegate {
         var focusID: UUID?

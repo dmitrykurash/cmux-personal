@@ -13,13 +13,17 @@ final class PersonalChatConsoleState {
     private(set) var request: PersonalChatConsoleRequest?
     private(set) var opening = false
     private(set) var failed = false
-    private(set) var focusID = UUID()
+    private(set) var focusID: UUID?
     private var attached: Scope?
     private var observedScope: Scope?
     private var handoffRequested = false
     private let model: PersonalChatModel
+    private let opensForChats: Bool
 
-    init(model: PersonalChatModel) { self.model = model }
+    init(model: PersonalChatModel, opensForChats: Bool = true) {
+        self.model = model
+        self.opensForChats = opensForChats
+    }
 
     var scope: Scope? {
         guard let session = model.selectedID, let project = model.projectID else { return nil }
@@ -37,8 +41,16 @@ final class PersonalChatConsoleState {
     }
 
     func reconcile() {
-        if observedScope != scope || !model.connected || model.phase == "offline" {
+        if observedScope != scope {
             observedScope = scope
+            presented = scope != nil && (opensForChats || presented)
+            handoffRequested = false
+            focusID = nil
+            request = nil
+            attached = nil
+            failed = false
+        }
+        if !model.connected || model.phase == "offline" {
             request = nil
             attached = nil
             failed = false
@@ -61,11 +73,25 @@ final class PersonalChatConsoleState {
         open()
     }
 
+    private func installRequest(for target: Scope) throws {
+        if attached != target || request == nil {
+            request = .init(command: try target.connection.terminalCommand(sessionID: target.session), cliCommand: model.consoleCommand)
+            attached = target
+        }
+    }
+
     private func attach() {
         guard presented, !opening, !failed, model.connected, !model.busy,
               model.phase != "offline", let target = scope else { return }
         guard handoffRequested || request == nil else { return }
         observedScope = scope
+        // Default visibility is passive: it must neither steal typing focus nor
+        // release a native permission card. Only an explicit handoff does that.
+        guard handoffRequested else {
+            do { try installRequest(for: target) }
+            catch { failed = true; model.error = error.localizedDescription }
+            return
+        }
         handoffRequested = false
         opening = true
         Task {
@@ -80,10 +106,7 @@ final class PersonalChatConsoleState {
             }
             if released {
                 do {
-                    if attached != target || request == nil {
-                        request = .init(command: try target.connection.terminalCommand(sessionID: target.session), cliCommand: model.consoleCommand)
-                        attached = target
-                    }
+                    try installRequest(for: target)
                     focusID = UUID()
                 } catch {
                     failed = true
