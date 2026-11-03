@@ -30,7 +30,12 @@ struct PersonalChatConsolePane: View {
             Group {
                 if let request = state.request {
                     #if canImport(SwiftTerm)
-                    PersonalChatTerminalSurface(command: request.command, focusID: state.focusID, ended: { if state.request?.id == request.id { ended = true } })
+                    PersonalChatTerminalSurface(command: request.command, focusID: state.focusID, ended: {
+                        if state.request?.id == request.id {
+                            ended = true
+                            state.terminalDidEnd(requestID: request.id)
+                        }
+                    })
                         .id(request.id).padding(8)
                     #endif
                 } else {

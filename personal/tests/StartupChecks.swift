@@ -3,11 +3,12 @@ import Foundation
 private actor StartupService: PersonalChatServing {
     var operations: [String] = []
     let sessionID: String
-    let failHealth: Bool
+    var failHealth: Bool
     init(sessionID: String, failHealth: Bool = false) {
         self.sessionID = sessionID
         self.failHealth = failHealth
     }
+    func restoreNetwork() { failHealth = false }
     func request(_ request: PersonalChatRequest, connection: PersonalChatConnection) async throws -> PersonalChatReply {
         operations.append(request.op)
         if request.op == "health" {
@@ -95,9 +96,17 @@ struct StartupChecks {
         precondition(empty.showingSettings && emptyOperations.isEmpty, "Fresh installs should show setup without SSH")
 
         try await repository.save(.init(connection: connection, projects: [first]))
-        let failing = PersonalChatModel(service: StartupService(sessionID: sid, failHealth: true), repository: repository)
+        let offlineService = StartupService(sessionID: sid, failHealth: true)
+        let failing = PersonalChatModel(service: offlineService, repository: repository)
         await failing.load()
-        precondition(!failing.connected && failing.error != nil && !failing.busy, "Offline launch must remain retryable")
+        precondition(!failing.connected && failing.isReconnecting && failing.error == nil && !failing.busy, "Offline launch retries automatically without repeated modal errors")
+        failing.stopRefresh()
+        failing.draft = "Keep the draft through startup recovery"
+        await offlineService.restoreNetwork()
+        await failing.refresh()
+        precondition(failing.connected && !failing.isReconnecting && failing.error == nil && failing.draft == "Keep the draft through startup recovery")
+        let startupRecoveryOperations = await offlineService.operations
+        precondition(!startupRecoveryOperations.contains("start") && !startupRecoveryOperations.contains("send"), "Startup recovery must not resume a saved CLI or send a message")
         let args = try connection.arguments(command: "true")
         precondition(args.contains("UseKeychain=yes") && args.contains("StrictHostKeyChecking=yes") && args.contains("ForwardAgent=no"))
         try await InteractionChecks.run()

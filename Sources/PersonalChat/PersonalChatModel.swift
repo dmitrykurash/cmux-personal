@@ -29,6 +29,16 @@ final class PersonalChatModel {
     var attachments: [URL] = []
     var phase = "offline"
     var connected = false
+    private(set) var reconnectFailures = 0
+    private(set) var successfulReadRevision = 0
+    private var retryConnectionSetup = false
+    var isReconnecting: Bool { reconnectFailures > 0 }
+    var pollDelay: UInt64 { UInt64(min(30, 2 << max(0, reconnectFailures - 1))) * 1_000_000_000 }
+    var connectionStatusText: String {
+        isReconnecting
+            ? String(localized: "personal.reconnecting", defaultValue: "Reconnecting…", bundle: PersonalChatStrings.bundle)
+            : String(localized: "personal.connected", defaultValue: "Connected", bundle: PersonalChatStrings.bundle)
+    }
     var busy = false
     var error: String?
     var showingSettings = false
@@ -102,6 +112,7 @@ final class PersonalChatModel {
     }
 
     var activityText: String? {
+        if isReconnecting { return nil }
         if !approvals.isEmpty || (phase == "console" && pendingSend?.state != "uncertain") { return nil }
         if let pendingSend {
             if pendingSend.state == "uncertain" { return String(localized: "personal.delivery.uncertain", defaultValue: "Delivery unconfirmed. Check the terminal before sending again.", bundle: PersonalChatStrings.bundle) }
@@ -131,6 +142,7 @@ final class PersonalChatModel {
     }
 
     private func clearConversation() {
+        reconnectFailures = 0
         dictation?.cancel(restore: false)
         messages = []
         approvals = []
@@ -178,6 +190,7 @@ final class PersonalChatModel {
         defer { busy = false }
         let previousSessionID = selectedID
         connected = false
+        retryConnectionSetup = false
         sessionListRequestID = nil
         isLoadingSessions = false
         sessionsLoadError = nil
@@ -202,7 +215,46 @@ final class PersonalChatModel {
             if error == nil && sessionsLoadError == nil { try await save() }
         } catch {
             selectedID = previousSessionID
-            self.error = error.localizedDescription
+            if let failure = error as? PersonalChatError, case .sshFailed = failure {
+                retryConnectionSetup = true
+                reconnectFailures = 1
+                phase = "reconnecting"
+                self.error = nil
+                startRefresh()
+            } else { self.error = error.localizedDescription }
+        }
+    }
+
+    private func recoverConnectionSetup() async {
+        let generation = selectionGeneration
+        let targetConnection = connection
+        do {
+            let result = try await service.request(.init(op: "health"), connection: targetConnection)
+            guard generation == selectionGeneration, targetConnection == connection, !Task.isCancelled else { return }
+            guard result.user == "developer", result.claude == true, result.tmux == true else { throw PersonalChatError.missingDependencies }
+            // Installation replaces the helper atomically and is idempotent.
+            // Recovery never starts a session or replays user operations.
+            _ = try await service.request(.init(op: "install"), connection: targetConnection)
+            guard generation == selectionGeneration, targetConnection == connection, !Task.isCancelled else { return }
+            retryConnectionSetup = false
+            reconnectFailures = 0
+            connected = true
+            error = nil
+            showingSettings = false
+            projectsFolder = result.path ?? projectsFolder
+            hasGitHubCLI = result.githubCLI == true
+            await reloadSessions()
+        } catch {
+            guard generation == selectionGeneration, targetConnection == connection, !Task.isCancelled else { return }
+            if let failure = error as? PersonalChatError, case .sshFailed = failure {
+                reconnectFailures = min(reconnectFailures + 1, 5)
+            } else {
+                retryConnectionSetup = false
+                reconnectFailures = 0
+                phase = "offline"
+                self.error = error.localizedDescription
+                stopRefresh()
+            }
         }
     }
 
@@ -298,11 +350,15 @@ final class PersonalChatModel {
     }
 
     func refresh() async {
+        if retryConnectionSetup { await recoverConnectionSetup() }
         guard connected, let id = selectedID, let project else { return }
         let generation = selectionGeneration
+        let targetConnection = connection
         do {
             let result = try await service.request(.init(op: "read", id: id, project: project.path, approvalUI: nativeApprovalsEnabled), connection: connection)
-            guard generation == selectionGeneration else { return }
+            guard generation == selectionGeneration, targetConnection == connection, selectedID == id, projectID == project.id, !Task.isCancelled else { return }
+            reconnectFailures = 0
+            successfulReadRevision &+= 1
             approvals = (result.approvals ?? []).filter { $0.sessionID == id && $0.project == project.path }
             let received = result.messages ?? []
             let newIDs = Set(received.map(\.id)).subtracting(remoteMessageIDs)
@@ -329,24 +385,32 @@ final class PersonalChatModel {
                 sessions[index].title = String(first.text.prefix(80))
             }
         } catch {
-            guard generation == selectionGeneration, !Task.isCancelled else { return }
-            connected = false
+            guard generation == selectionGeneration, targetConnection == connection, selectedID == id, projectID == project.id, !Task.isCancelled else { return }
             approvals = []
-            phase = "offline"
-            self.error = error.localizedDescription
-            stopRefresh()
+            if let failure = error as? PersonalChatError, case .sshFailed = failure {
+                // Retry only the read. Preserve the session, draft, pending send
+                // and existing terminal; a failed poll does not end remote Claude.
+                reconnectFailures = min(reconnectFailures + 1, 5)
+                phase = "reconnecting"
+            } else {
+                reconnectFailures = 0
+                phase = "attention"
+                self.error = error.localizedDescription
+                stopRefresh()
+            }
         }
     }
 
     func startRefresh() {
         stopRefresh()
         refreshTask = Task { [weak self] in
-            await self?.refresh()
+            if self?.retryConnectionSetup != true { await self?.refresh() }
             // A two-second sampling interval is the deliberate MVP refresh rate.
             // No message retries; cancellation stops polling on window/selection changes.
             while !Task.isCancelled {
-                do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
-                guard let self, self.connected else { return }
+                let delay = self?.pollDelay ?? 2_000_000_000
+                do { try await Task.sleep(nanoseconds: delay) } catch { return }
+                guard let self, self.connected || self.retryConnectionSetup else { return }
                 if !self.busy { await self.refresh() }
             }
         }

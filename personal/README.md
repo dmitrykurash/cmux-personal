@@ -426,3 +426,19 @@ newer turns and unknown layouts prevent recovery. Status checks send no keys.
 
 The chat displays recognized command records and their output without internal
 XML tags. The normalized user record also acknowledges an older pending send.
+
+### SSH recovery (0.9.4)
+
+A failed chat SSH poll keeps the conversation, draft, pending-send record and any
+working terminal attached. The UI shows Reconnecting and disables chat sending
+until a fresh read succeeds. Reads retry after 2, 4, 8, 16 and then 30 seconds,
+without a retry limit; a successful read restores the normal two-second cadence.
+No send, upload, approval or session-start operation is replayed. A launch-time
+SSH failure retries health/setup using the same backoff; helper installation is
+an atomic, idempotent replacement.
+Remote application errors remain visible instead of being called disconnects.
+
+An exited embedded console can reattach passively after a fresh successful read
+confirms that the selected remote session is alive. Reattachment is rate-limited,
+does not take focus or release approvals, and stops when the pane closes or the
+selection changes. Existing SSH host verification and authentication are retained.

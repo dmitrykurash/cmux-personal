@@ -129,7 +129,10 @@ struct PersonalChatComposer: View {
 
     private var statusRow: some View {
         HStack(spacing: 8) {
-            if model.phase == "busy" || model.busy {
+            if model.isReconnecting {
+                ProgressView().controlSize(.small)
+                Text(model.connectionStatusText)
+            } else if model.phase == "busy" || model.busy {
                 ProgressView().controlSize(.mini)
                 Text(String(localized: "personal.working", defaultValue: "Claude is working…", bundle: PersonalChatStrings.bundle))
             } else if model.phase == "console" {

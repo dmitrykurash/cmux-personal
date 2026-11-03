@@ -34,12 +34,14 @@ private actor InteractionService: PersonalChatServing {
 }
 
 private actor RecoveryService: PersonalChatServing {
+    let failures: Int
+    init(failures: Int = 1) { self.failures = failures }
     var reads = 0
     var operations: [String] = []
     func request(_ request: PersonalChatRequest, connection: PersonalChatConnection) async throws -> PersonalChatReply {
         operations.append(request.op)
         reads += 1
-        if reads == 1 { throw PersonalChatError.sshFailed }
+        if reads <= failures { throw PersonalChatError.sshFailed }
         return PersonalChatReply(ok: true, messages: [.init(id: "recovered", role: "assistant", text: "Recovered reply")], phase: "ready")
     }
 }
@@ -112,6 +114,25 @@ struct InteractionChecks {
         let recoveryOperations = await recoveryService.operations
         precondition(recoveryOperations == ["read", "read"], "Recovery only reads; it never repeats a send, resumes Claude or reinstalls the bridge")
         recovering.stopRefresh()
+
+        let loopService = RecoveryService()
+        let loopModel = PersonalChatModel(service: loopService, repository: PersonalChatRepository(file: folder.appendingPathComponent("loop.json")))
+        loopModel.projects = [project]; loopModel.projectID = project.id; loopModel.selectedID = UUID().uuidString
+        loopModel.connected = true; loopModel.phase = "ready"
+        loopModel.startRefresh()
+        try await DictationChecks.wait { loopModel.messages.first?.id == "recovered" }
+        loopModel.stopRefresh()
+        precondition(!loopModel.isReconnecting && loopModel.phase == "ready", "The production polling loop must recover automatically")
+        let retryService = RecoveryService(failures: 10)
+        let retryModel = PersonalChatModel(service: retryService, repository: PersonalChatRepository(file: folder.appendingPathComponent("retry.json")))
+        retryModel.projects = [project]; retryModel.projectID = project.id; retryModel.selectedID = UUID().uuidString
+        retryModel.connected = true; retryModel.phase = "ready"
+        for expected: UInt64 in [2, 4, 8, 16, 30, 30, 30, 30, 30, 30] {
+            await retryModel.refresh()
+            precondition(retryModel.isReconnecting && retryModel.pollDelay == expected * 1_000_000_000 && retryModel.error == nil)
+        }
+        await retryModel.refresh()
+        precondition(!retryModel.isReconnecting && retryModel.pollDelay == 2_000_000_000 && retryModel.phase == "ready", "Long outages remain recoverable and reset backoff on success")
 
         let sidebar = PersonalChatSidebarState()
         precondition(!sidebar.archiveIsExpanded(project.id), "Archive starts closed")

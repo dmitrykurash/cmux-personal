@@ -19,10 +19,15 @@ final class PersonalChatConsoleState {
     private var handoffRequested = false
     private let model: PersonalChatModel
     private let opensForChats: Bool
+    private let now: () -> Date
+    private var endedRequestID: UUID?
+    private var retryAfter = Date.distantPast
+    private var retryFailures = 0
 
-    init(model: PersonalChatModel, opensForChats: Bool = true) {
+    init(model: PersonalChatModel, opensForChats: Bool = true, now: @escaping () -> Date = { Date() }) {
         self.model = model
         self.opensForChats = opensForChats
+        self.now = now
     }
 
     var scope: Scope? {
@@ -42,6 +47,8 @@ final class PersonalChatConsoleState {
 
     func reconcile() {
         if observedScope != scope {
+            endedRequestID = nil
+            retryFailures = 0
             observedScope = scope
             presented = scope != nil && (opensForChats || presented)
             handoffRequested = false
@@ -59,6 +66,8 @@ final class PersonalChatConsoleState {
     }
 
     func close() {
+        endedRequestID = nil
+        retryFailures = 0
         presented = false
         request = nil
         attached = nil
@@ -68,9 +77,33 @@ final class PersonalChatConsoleState {
     }
 
     func reconnect() {
+        endedRequestID = nil
+        retryFailures = 0
         request = nil
         attached = nil
         open()
+    }
+
+    func terminalDidEnd(requestID: UUID) {
+        guard presented, request?.id == requestID else { return }
+        endedRequestID = requestID
+        retryFailures = min(retryFailures + 1, 5)
+        retryAfter = now().addingTimeInterval(Double(min(30, 2 << (retryFailures - 1))))
+    }
+
+    func recoverAfterRead() {
+        // A fresh read must confirm the selected remote session is still alive.
+        // Passive reattachment never starts Claude, sends input or hands off approval.
+        guard presented, !opening, !model.busy, model.connected, !model.isReconnecting,
+              model.phase != "offline", attached == scope,
+              let endedRequestID, request?.id == endedRequestID, now() >= retryAfter else { return }
+        self.endedRequestID = nil
+        request = nil
+        attached = nil
+        handoffRequested = false
+        focusID = nil
+        failed = false
+        attach()
     }
 
     private func installRequest(for target: Scope) throws {
@@ -81,7 +114,7 @@ final class PersonalChatConsoleState {
     }
 
     private func attach() {
-        guard presented, !opening, !failed, model.connected, !model.busy,
+        guard presented, !opening, !failed, model.connected, !model.isReconnecting, !model.busy,
               model.phase != "offline", let target = scope else { return }
         guard handoffRequested || request == nil else { return }
         observedScope = scope

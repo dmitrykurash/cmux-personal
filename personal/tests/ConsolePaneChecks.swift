@@ -101,6 +101,31 @@ struct ConsolePaneChecks {
         unsupported.reconcile()
         precondition(!unsupported.presented && unsupported.request == nil, "A build with another terminal provider must not show an empty pane")
         await Task.yield(); model.stopRefresh()
+        var retryTime = Date(timeIntervalSince1970: 100)
+        let recoveringPane = PersonalChatConsoleState(model: model, now: { retryTime })
+        model.phase = "ready"
+        recoveringPane.reconcile()
+        let lostID = recoveringPane.request!.id
+        let handoffsBeforeRetry = await service.handoffs
+        recoveringPane.terminalDidEnd(requestID: lostID)
+        recoveringPane.recoverAfterRead()
+        precondition(recoveringPane.request?.id == lostID, "Do not reconnect in a tight loop")
+        retryTime = retryTime.addingTimeInterval(2)
+        recoveringPane.recoverAfterRead()
+        let replacedID = recoveringPane.request!.id
+        precondition(replacedID != lostID && recoveringPane.focusID == nil)
+        let handoffsAfterRetry = await service.handoffs
+        precondition(handoffsAfterRetry == handoffsBeforeRetry, "Automatic console recovery must not release approvals or focus the terminal")
+        recoveringPane.terminalDidEnd(requestID: lostID)
+        retryTime = retryTime.addingTimeInterval(60)
+        recoveringPane.recoverAfterRead()
+        precondition(recoveringPane.request?.id == replacedID, "Late exits from replaced PTYs must be ignored")
+        recoveringPane.terminalDidEnd(requestID: replacedID)
+        recoveringPane.close()
+        retryTime = retryTime.addingTimeInterval(60)
+        recoveringPane.recoverAfterRead()
+        precondition(!recoveringPane.presented && recoveringPane.request == nil, "A closed console must stay closed during recovery")
+        await Task.yield(); model.stopRefresh()
         print("Console pane checks passed: passive default opening, close persistence, focus intent, stable PTY identity, explicit handoffs, close/selection races, saved-session resume and draft preservation.")
     }
 }

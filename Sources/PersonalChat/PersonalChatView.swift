@@ -91,6 +91,7 @@ struct PersonalChatView: View {
         .onChange(of: model.connected) { console.reconcile() }
         .onChange(of: model.busy) { if !model.busy { console.reconcile() } }
         .onChange(of: model.phase) { console.reconcile() }
+        .onChange(of: model.successfulReadRevision) { console.recoverAfterRead() }
         .onChange(of: console.presented) {
             if console.presented && sidebarVisible && contentWidth < 1100 {
                 sidebarHiddenForConsole = true
@@ -280,20 +281,20 @@ struct PersonalChatView: View {
             ZStack(alignment: .bottomTrailing) {
                 Circle().fill(palette.text).frame(width: 30, height: 30)
                     .overlay(Image(systemName: "person.fill").font(.system(size: 14)).foregroundStyle(palette.canvas))
-                Circle().fill(model.connected ? palette.success : palette.faint).frame(width: 7, height: 7)
+                Circle().fill(model.connected && !model.isReconnecting ? palette.success : palette.faint).frame(width: 7, height: 7)
                     .overlay(Circle().strokeBorder(palette.canvas, lineWidth: 1.5))
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: "CheatCode").font(PersonalChatTypography.body(12, weight: .medium))
-                if model.connected {
-                    Text(String(localized: "personal.connected", defaultValue: "Connected", bundle: PersonalChatStrings.bundle))
+                if model.connected || model.isReconnecting {
+                    Text(model.connectionStatusText)
                 } else {
                     Button(String(localized: "personal.connect", defaultValue: "Connect", bundle: PersonalChatStrings.bundle)) { Task { await model.connect() } }
                         .buttonStyle(.plain).disabled(model.busy || model.connection.host.isEmpty)
                 }
             }.font(PersonalChatTypography.body(10.5)).foregroundStyle(palette.secondary)
             Spacer()
-            if model.busy { ProgressView().controlSize(.mini) }
+            if model.busy || model.isReconnecting { ProgressView().controlSize(.mini) }
             Button { model.showingSettings = true } label: { Image(systemName: "chevron.up.chevron.down").font(.system(size: 10)).frame(width: 26, height: 30) }
                 .buttonStyle(PersonalChatHoverStyle()).foregroundStyle(palette.muted)
                 .help(String(localized: "personal.connection", defaultValue: "Connection", bundle: PersonalChatStrings.bundle))
