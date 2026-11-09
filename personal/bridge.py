@@ -25,7 +25,7 @@ import uuid
 ROOT = Path.home() / ".local/share/cmux-personal"
 TRANSCRIPTS = Path.home() / ".claude/projects"
 MAX_ATTACHMENT = 20 * 1024 * 1024
-MAX_TRANSCRIPT = 32 * 1024 * 1024
+HISTORY_WINDOW = 4 * 1024 * 1024
 UI_LEASE_SECONDS = 15
 PERMISSION_SECONDS = 540
 
@@ -332,15 +332,30 @@ def session_lock(sid):
         yield
 
 
-def records(path):
-    if path.is_symlink() or path.stat().st_size > MAX_TRANSCRIPT:
-        raise ValueError("Transcript is too large for this MVP; use the terminal")
-    with path.open() as stream:
+def records(path, recent=False):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("Unsafe transcript path")
+    with path.open("rb") as stream:
+        if recent:
+            # Align to the start of the record crossing the display window.
+            # Identity, listing and resume always read the original file from byte zero.
+            offset = max(0, os.fstat(stream.fileno()).st_size - HISTORY_WINDOW)
+            while offset:
+                start = max(0, offset - 65536)
+                stream.seek(start)
+                newline = stream.read(offset - start).rfind(b"\n")
+                if newline >= 0:
+                    offset = start + newline + 1
+                    break
+                offset = start
+            stream.seek(offset)
         for line in stream:
             try:
-                yield json.loads(line)
+                record = json.loads(line)
             except (ValueError, TypeError):
                 continue  # A writer may not have completed its last JSONL line.
+            if isinstance(record, dict):
+                yield record
 
 
 def transcript(sid, project):
@@ -364,13 +379,13 @@ def text_content(content):
     return ""
 
 
-def messages(path):
-    result = []
+def messages(path, recent=True):
+    result = deque(maxlen=400)
     seen = set()
     previous_command = None
     if not path:
-        return result
-    for i, record in enumerate(records(path)):
+        return []
+    for i, record in enumerate(records(path, recent=recent)):
         role = record.get("type")
         if role not in ("user", "assistant") or record.get("isSidechain") or record.get("isMeta"):
             continue
@@ -397,7 +412,10 @@ def messages(path):
                 if block.get("type") == "tool_use":
                     # Inputs may include secrets. Only expose the tool name here.
                     result.append({"id": rid + "-" + str(j), "role": "tool", "text": block.get("name", "Tool")})
-    return result[-400:]
+    if recent and not result and path.stat().st_size > HISTORY_WINDOW:
+        # Long runs of tool output may contain no visible turns.
+        return messages(path, recent=False)
+    return list(result)
 
 
 def list_sessions(project):
@@ -528,7 +546,7 @@ def local_command_completed(path, status):
     # An old completion cannot release a new send reservation, even while the
     # CLI still shows its old empty prompt. Later conversational records also
     # invalidate the completion. No timer guesses or terminal input are used.
-    tail = deque((r for r in records(path) if r.get('type') in ('user', 'assistant')
+    tail = deque((r for r in records(path, recent=True) if r.get('type') in ('user', 'assistant')
                   and not r.get('isMeta') and not r.get('isSidechain')), maxlen=2)
     if len(tail) != 2 or any(r.get('type') != 'user' for r in tail):
         return False

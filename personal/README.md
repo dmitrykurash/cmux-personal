@@ -295,7 +295,7 @@ This is an unofficial personal cmux modification, not an Anthropic product.
    compatibility, automated real-CLI scenarios, Intel build, signing/notarization.
 
 History refreshes every two seconds, shows the latest 400 rendered entries and
-lists project sessions with archived rows paginated in groups of 20. Transcript files over 32 MiB require the terminal.
+lists project sessions with archived rows paginated in groups of 20. The native chat displays recent messages. Resume opens the original Claude Code transcript, including large conversations.
 The parser follows an internal Claude transcript format, not a stable API;
 unknown JSONL records are ignored. Transient transcript edits and compaction
 may require additional adaptation. Inline Markdown is supported; media remains
