@@ -53,6 +53,25 @@ class BridgeTests(unittest.TestCase):
         self.assertIsNone(bridge.transcript(self.sid, self.root))
         self.assertEqual(bridge.list_sessions(self.project)[0]["title"], "Hello")
 
+    def test_resume_large_saved_conversation(self):
+        path = self.fixture([{"cwd": str(self.project), "type": "user", "message": {"content": "First turn"}}])
+        with path.open("ab") as stream:
+            stream.write(b'\n')
+            # Large tool results can make a normal conversation exceed 32 MiB.
+            for _ in range(33):
+                stream.write(b'{"type":"progress","data":"' + b'z' * (1024 * 1024) + b'"}\n')
+            stream.write(b'{"type":"assistant","uuid":"last","message":{"content":"Saved answer"}}\n')
+        args = {"id": self.sid, "project": str(self.project)}
+        with patch.object(bridge, "alive", return_value=False), patch.object(bridge, "tmux") as tmux, \
+                patch.object(bridge, "executable", return_value="/usr/bin/claude"):
+            reply = bridge.dispatch(dict(args, op="read"))
+            self.assertEqual(reply["phase"], "offline")
+            self.assertEqual(reply["messages"][-1]["text"], "Saved answer")
+            self.assertEqual(bridge.list_sessions(self.project)[0]["title"], "First turn")
+            self.assertEqual(bridge.dispatch(dict(args, op="start", resume=True))["id"], self.sid)
+            self.assertIn("--resume " + self.sid, tmux.call_args.args[-1])
+            self.assertIsNone(bridge.transcript(self.sid, self.root))
+
     def test_attachment_roundtrip_permissions_and_unique_names(self):
         data = b"attachment\x00payload"
         one = Path(bridge.upload(self.sid, "photo '1'.png", base64.b64encode(data).decode())["path"])
