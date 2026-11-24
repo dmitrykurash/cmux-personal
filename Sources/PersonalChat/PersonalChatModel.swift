@@ -33,7 +33,7 @@ final class PersonalChatModel {
     private(set) var successfulReadRevision = 0
     private var retryConnectionSetup = false
     var isReconnecting: Bool { reconnectFailures > 0 }
-    var pollDelay: UInt64 { UInt64(min(30, 2 << max(0, reconnectFailures - 1))) * 1_000_000_000 }
+    var pollDelay: UInt64 { UInt64(min(8, 2 << max(0, reconnectFailures - 1))) * 1_000_000_000 }
     var connectionStatusText: String {
         isReconnecting
             ? String(localized: "personal.reconnecting", defaultValue: "Reconnecting…", bundle: PersonalChatStrings.bundle)

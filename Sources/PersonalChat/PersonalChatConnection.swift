@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct PersonalChatConnection: Codable, Equatable, Sendable {
     var host = ""
@@ -11,14 +12,39 @@ struct PersonalChatConnection: Codable, Equatable, Sendable {
             throw PersonalChatError.invalidConnection
         }
         var args = ["-o", "UseKeychain=yes", "-o", "AddKeysToAgent=yes",
-                    "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ClearAllForwardings=yes",
+                    "-o", "StrictHostKeyChecking=yes", "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes",
                     "-o", "PermitLocalCommand=no", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15",
                     "-o", "ServerAliveCountMax=2", "-o", "BatchMode=yes", "-p", String(port), "-l", "developer"]
         if !identityFile.isEmpty {
             args += ["-o", "IdentitiesOnly=yes", "-i", NSString(string: identityFile).expandingTildeInPath]
         }
+        args += ["-o", "ControlMaster=auto", "-o", "ControlPersist=60", "-o", "ControlPath=" + (try controlPath())]
         args += [terminal ? "-tt" : "-T", "--", host, command]
         return args
+    }
+
+    private func controlPath() throws -> String {
+        // Use a short path for macOS's Unix socket limit. The directory is private
+        // to this user; host, port and identity select separate authenticated links.
+        let directory = "/private/tmp/cheatcode-ssh-" + String(getuid())
+        let manager = FileManager.default
+        if !manager.fileExists(atPath: directory) {
+            do {
+                try manager.createDirectory(atPath: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            } catch CocoaError.fileWriteFileExists {
+                // Another request may have created the same private directory.
+            }
+        }
+        let attributes = try manager.attributesOfItem(atPath: directory)
+        guard attributes[.type] as? FileAttributeType == .typeDirectory,
+              (attributes[.ownerAccountID] as? NSNumber)?.uint32Value == getuid(),
+              (attributes[.posixPermissions] as? NSNumber)?.intValue == 0o700 else {
+            throw PersonalChatError.invalidConnection
+        }
+        let identity = NSString(string: identityFile).expandingTildeInPath
+        let data = try JSONEncoder().encode([host, String(port), identity])
+        let digest = SHA256.hash(data: data).prefix(16).map { String(format: "%02x", $0) }.joined()
+        return directory + "/" + digest
     }
 
     static func quote(_ value: String) -> String {
