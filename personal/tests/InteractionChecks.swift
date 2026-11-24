@@ -127,7 +127,7 @@ struct InteractionChecks {
         let retryModel = PersonalChatModel(service: retryService, repository: PersonalChatRepository(file: folder.appendingPathComponent("retry.json")))
         retryModel.projects = [project]; retryModel.projectID = project.id; retryModel.selectedID = UUID().uuidString
         retryModel.connected = true; retryModel.phase = "ready"
-        for expected: UInt64 in [2, 4, 8, 16, 30, 30, 30, 30, 30, 30] {
+        for expected: UInt64 in [2, 4, 8, 8, 8, 8, 8, 8, 8, 8] {
             await retryModel.refresh()
             precondition(retryModel.isReconnecting && retryModel.pollDelay == expected * 1_000_000_000 && retryModel.error == nil)
         }

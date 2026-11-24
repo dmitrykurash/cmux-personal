@@ -109,6 +109,45 @@ struct StartupChecks {
         precondition(!startupRecoveryOperations.contains("start") && !startupRecoveryOperations.contains("send"), "Startup recovery must not resume a saved CLI or send a message")
         let args = try connection.arguments(command: "true")
         precondition(args.contains("UseKeychain=yes") && args.contains("StrictHostKeyChecking=yes") && args.contains("ForwardAgent=no"))
+        func sshOptions(_ target: PersonalChatConnection, terminal: Bool = false) throws -> [String: String] {
+            let process = Process()
+            let output = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+            process.arguments = ["-G"] + (try target.arguments(command: "true", terminal: terminal))
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            precondition(process.terminationStatus == 0)
+            return Dictionary(uniqueKeysWithValues: String(decoding: data, as: UTF8.self).split(separator: "\n").compactMap { line in
+                let pair = line.split(separator: " ", maxSplits: 1)
+                guard pair.count == 2 else { return nil }
+                // Only options with one value are relevant to these checks.
+                guard ["controlmaster", "controlpath", "controlpersist", "forwardagent", "stricthostkeychecking"].contains(String(pair[0])) else { return nil }
+                return (String(pair[0]), String(pair[1]))
+            })
+        }
+        let transport = try sshOptions(connection)
+        precondition(transport["controlmaster"] == "auto", "Polling must reuse authenticated SSH rather than perform a login on every read")
+        let path = transport["controlpath"]!
+        precondition(path.utf8.count < 100)
+        let attributes = try FileManager.default.attributesOfItem(atPath: URL(fileURLWithPath: path).deletingLastPathComponent().path)
+        precondition(attributes[.type] as? FileAttributeType == .typeDirectory)
+        precondition((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+        precondition((attributes[.ownerAccountID] as? NSNumber)?.uint32Value == getuid())
+        let terminalTransport = try sshOptions(connection, terminal: true)
+        precondition(terminalTransport["controlpath"] == path, "Console and API requests must share a connection")
+        let repeatedTransport = try sshOptions(connection)
+        precondition(repeatedTransport["controlpath"] == path, "Repeated reads must address the same transport")
+        for other in [PersonalChatConnection(host: "other.invalid", identityFile: connection.identityFile),
+                      PersonalChatConnection(host: connection.host, port: 2222, identityFile: connection.identityFile),
+                      PersonalChatConnection(host: connection.host, identityFile: "/tmp/another-key")] {
+            let otherTransport = try sshOptions(other)
+            precondition(otherTransport["controlpath"] != path, "Hosts, ports and identities must not share authentication")
+        }
+        precondition(transport["controlpersist"] == "60")
+        precondition(transport["forwardagent"] == "no" && transport["stricthostkeychecking"] == "true")
         try await InteractionChecks.run()
         try await SessionLoadingChecks.run()
         try await ApprovalChecks.run()
